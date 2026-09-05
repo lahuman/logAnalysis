@@ -1,0 +1,8 @@
+java.lang.RuntimeException: request failed
+    at com.example.order.OrderController.create(OrderController.java:20)
+    at java.base/java.lang.Thread.run(Thread.java:840)
+    Suppressed: java.io.IOException: close failed
+        at com.example.order.TempResource.close(TempResource.java:7)
+Caused by: com.example.order.ValidationException: invalid order 42
+    at app@1.0/com.example.order.OrderService$Worker.lambda$save$0(OrderService.java:42)
+    ... 2 more

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Java error log analysis every 10 minutes
+
+[Timer]
+OnCalendar=*:0/10
+Persistent=true
+RandomizedDelaySec=30s
+Unit=log-analyzer.service
+
+[Install]
+WantedBy=timers.target

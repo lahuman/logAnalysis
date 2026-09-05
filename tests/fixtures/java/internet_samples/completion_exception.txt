@@ -1,0 +1,7 @@
+java.util.concurrent.CompletionException: java.lang.IllegalStateException: payment failed
+    at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:315)
+    at java.base/java.util.concurrent.CompletableFuture.completeThrowable(CompletableFuture.java:320)
+Caused by: java.lang.IllegalStateException: payment failed
+    at com.acme.payment.PaymentService.lambda$charge$0(PaymentService.java:91)
+    at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768)
+    ... 2 more

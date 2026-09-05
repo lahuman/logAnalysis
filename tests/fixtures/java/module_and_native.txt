@@ -1,0 +1,5 @@
+java.lang.IllegalStateException: boom
+    at java.base@17.0.10/java.util.Objects.requireNonNull(Objects.java:235)
+    at app//com.example.order.OrderService$$EnhancerBySpringCGLIB$$abc.execute(OrderService.java:88)
+    at com.example.order.NativeBridge.call(Native Method)
+    at com.example.order.Generated.invoke(Unknown Source)

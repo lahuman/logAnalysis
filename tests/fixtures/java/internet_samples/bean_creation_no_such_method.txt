@@ -1,0 +1,10 @@
+java.lang.reflect.InvocationTargetException
+    at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+    at com.atlassian.bamboo.agent.bootstrap.AgentRunner.run(AgentRunner.java:41)
+Caused by: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'jmsMessageConverterTarget'
+    at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:451)
+    ... 1 more
+Caused by: java.lang.NoSuchMethodError: com.thoughtworks.xstream.io.xml.AbstractXmlDriver.<init>(NameCoder)V
+    at com.thoughtworks.xstream.io.xml.AbstractXppDriver.<init>(AbstractXppDriver.java:50)
+    at com.atlassian.bamboo.v2.build.queue.XStreamMessageConverter.createXStream(XStreamMessageConverter.java:50)
+    ... 2 more

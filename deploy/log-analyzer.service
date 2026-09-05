@@ -1,0 +1,39 @@
+[Unit]
+Description=Java error log analyzer
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=log-analyzer
+Group=log-analyzer
+WorkingDirectory=/opt/log-analyzer
+ExecStart=/opt/log-analyzer/venv/bin/python -m log_analyzer run --config /etc/log-analyzer/config.toml
+Environment=PYTHONUNBUFFERED=1
+UMask=0027
+RuntimeDirectory=log-analyzer
+RuntimeDirectoryMode=0750
+StateDirectory=log-analyzer
+StateDirectoryMode=0750
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/log-analyzer
+ReadOnlyPaths=/var/lib/log-analyzer/repos
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+TimeoutStartSec=infinity
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

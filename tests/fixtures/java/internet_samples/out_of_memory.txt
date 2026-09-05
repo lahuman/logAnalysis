@@ -1,0 +1,5 @@
+java.lang.OutOfMemoryError: Java heap space
+    at java.base/java.nio.HeapByteBuffer.<init>(HeapByteBuffer.java:64)
+    at java.base/java.nio.ByteBuffer.allocate(ByteBuffer.java:363)
+    at com.acme.image.ImageCache.load(ImageCache.java:118)
+    at com.acme.image.ImageWorker.run(ImageWorker.java:42)

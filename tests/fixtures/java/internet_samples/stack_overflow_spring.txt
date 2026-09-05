@@ -1,0 +1,6 @@
+org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'orderDetailsService'
+    at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:519)
+Caused by: java.lang.StackOverflowError
+    at com.spectrum.sci.osm.service.OrderDetailsService.<init>(OrderDetailsService.java:76)
+    at com.spectrum.sci.osm.service.CommonService.<init>(CommonService.java:53)
+    at com.spectrum.sci.osm.service.OrderDetailsService.<init>(OrderDetailsService.java:76)

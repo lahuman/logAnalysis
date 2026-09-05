@@ -1,0 +1,24 @@
+FROM python:3.11.8-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 tester
+
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY src ./src
+COPY templates ./templates
+RUN python -m pip install --no-cache-dir .
+
+COPY tests ./tests
+COPY deploy ./deploy
+COPY Dockerfile.test compose.yaml ./
+
+USER tester
+
+CMD ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]

@@ -1,0 +1,53 @@
+[run]
+batch_size = 500
+max_concurrency = 3
+initial_lookback_minutes = 60
+ingestion_delay_seconds = 60
+overlap_minutes = 5
+lock_file = "/run/log-analyzer/run.lock"
+severities = ["ERROR", "FATAL"]
+
+[error_source]
+type = "elasticsearch"
+name = "production-logs"
+url = "https://elasticsearch.internal:9200"
+index = "logs-*"
+tls_ca = "/etc/pki/ca-trust/source/anchors/internal-ca.pem"
+verify_tls = true
+request_timeout_seconds = 30
+username_secret = "ES_USERNAME"
+password_secret = "ES_PASSWORD"
+api_key_secret = "ES_API_KEY"
+
+[analysis]
+language = "java"
+prompt_version = "java-incident-v2"
+analyzer_version = "1"
+max_log_characters = 100000
+source_context_lines = 75
+max_source_bytes = 256000
+max_git_change_chars = 30000
+
+[services.order_api]
+repository = "/var/lib/log-analyzer/repos/order-api.git"
+branch = "main"
+diff_history = 5
+source_roots = ["src/main/java"]
+application_packages = ["com.example.order"]
+framework_packages = ["java", "jdk", "sun", "org.springframework", "org.apache"]
+
+[openai]
+provider = "openai"
+base_url = "https://api.openai.com/v1"
+model = "replace-with-a-structured-output-capable-model"
+timeout_seconds = 60
+max_output_tokens = 3000
+api_key_secret = "OPENAI_API_KEY"
+
+[state]
+path = "/var/lib/log-analyzer/state.db"
+busy_timeout_seconds = 5
+
+[report]
+directory = "/var/lib/log-analyzer/reports"
+retention_days = 30
