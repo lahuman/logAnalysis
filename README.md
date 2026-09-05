@@ -31,6 +31,14 @@ null·정상 입력 회귀 테스트와 추가 확인할 사항이 담깁니다.
 
 ## 중요망·폐쇄망에서 사용하기
 
+현재 중요망 작업은 **`codex/important-network` 브랜치**에 있습니다.
+[브랜치 작업 정리](docs/IMPORTANT_NETWORK.md)에서 전체 절차, 구현 범위, 검증 결과와
+후속 과제를 확인할 수 있습니다. 소스를 받을 때는 다음처럼 브랜치를 지정하세요.
+
+```bash
+git clone --branch codex/important-network https://github.com/lahuman/logAnalysis.git
+```
+
 **[압축 해제형 설치 안내](docs/OFFLINE_DEPLOYMENT.md)**를 따르세요.
 RHEL 9 x86_64용 배포본에 **Python 3.11.8, 의존성, 로컬 조회용 Git**을 포함합니다.
 압축을 풀고 `./log-analyzer doctor`로 점검한 뒤 내부 ES·LLM 주소를 설정하면 됩니다.
@@ -121,7 +129,7 @@ API 호출은 계정의 사용량·요금 정책을 따릅니다.
 | 내 Elasticsearch 로그 배치 분석 | Linux / WSL | 위 항목 + HTTPS Elasticsearch + 로컬 Git 저장소 |
 | 정기 분석 | systemd가 있는 Linux | 배치 설정 + 전용 서비스 계정 |
 
-현재 전용 파서는 Java이며 LLM은 **NVIDIA NIM 또는 OpenAI**를 선택합니다.
+현재 전용 파서는 Java이며 LLM은 **내부 onprem 서버, NVIDIA NIM 또는 OpenAI**를 선택합니다.
 일반 로그 파일을 직접 업로드하는 기능과 웹 UI는 없습니다. 서비스 로그는
 Elasticsearch에 수집되어 있어야 합니다. Windows에서는 전체 배치 대신 샘플 분석과
 단위 테스트를 실행할 수 있습니다.
@@ -130,7 +138,10 @@ Elasticsearch에 수집되어 있어야 합니다. Windows에서는 전체 배�
 
 | 필요한 내용 | 문서 |
 |---|---|
+| 중요망 브랜치의 전체 흐름·구현·후속 과제 | [브랜치 작업 정리](docs/IMPORTANT_NETWORK.md) |
+| 중요망 압축 해제·내부 LLM 설정·운영 | [중요망 배포 안내](docs/OFFLINE_DEPLOYMENT.md) |
 | 내 로그 연결, 실행, 리포트 읽기 | [사용 가이드](docs/USAGE.md) |
+| 중복 판별, 재발, 분석 캐시와 리포트 생성 | [중복 오류 처리](docs/DUPLICATE_ERRORS.md) |
 | 설정값, 인증, Git 소스 선택 | [설정 안내](docs/CONFIGURATION.md) |
 | 인증 실패, NO_SOURCE, 빈 결과 해결 | [문제 해결](docs/TROUBLESHOOTING.md) |
 | NVIDIA NIM 모델·출력 모드 | [NIM 연동](docs/NVIDIA_NIM.md) |

@@ -23,6 +23,10 @@
 | 출력·운영 | Markdown 리포트, CLI 상태 요약·종료 코드, POSIX 잠금, systemd service·timer와 credential 예시 |
 
 패키지 버전은 `0.2.0`, 프롬프트 버전은 `java-incident-v2`, 분석기 버전은 `1`이다.
+중요망 브랜치의 전체 작업·산출물 기준은 [브랜치 작업 정리](IMPORTANT_NETWORK.md)에 있다.
+현재 리포트는 이벤트별로 생성하며 재발 시 기존 리포트를 갱신하지 않는다.
+대표 리포트 갱신과 오류 그룹의 최초·최종 시각 집계는 후속 개선안이며 미구현이다.
+상세 동작은 [중복 오류 처리](DUPLICATE_ERRORS.md)를 따른다.
 비동기 Elasticsearch 실행에 필요한 `aiohttp>=3.9,<4`도 의존성에 포함되어 있다.
 
 ## 실행 결과
