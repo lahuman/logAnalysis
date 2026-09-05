@@ -17,6 +17,7 @@ RUN python -m pip install --no-cache-dir .
 
 COPY tests ./tests
 COPY deploy ./deploy
+COPY config/*.example ./config/
 COPY Dockerfile.test compose.yaml ./
 
 USER tester

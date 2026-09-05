@@ -1,0 +1,4 @@
+FROM registry.access.redhat.com/ubi9/ubi:9.6
+RUN dnf install -y gcc make diffutils python3.11 tar gzip && dnf clean all
+WORKDIR /source
+ENTRYPOINT ["python3.11", "deploy/offline/build.py"]

@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+import ssl
+from pathlib import Path
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -72,11 +74,13 @@ class OpenAIResponsesAnalyzer:
     _endpoint = "responses"
     _provider_name = "OpenAI"
     _global_statuses = {400, 401, 403}
+    _requires_api_key = True
+    _trust_env = True
 
     def __init__(
         self,
         *,
-        api_key: str,
+        api_key: str | None,
         model: str,
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 30.0,
@@ -85,8 +89,9 @@ class OpenAIResponsesAnalyzer:
         client: httpx.AsyncClient | None = None,
         redactor: SecretRedactor | None = None,
         sleep: Sleep = asyncio.sleep,
+        tls_ca: Path | None = None,
     ) -> None:
-        if not api_key.strip():
+        if self._requires_api_key and not (api_key and api_key.strip()):
             raise ValueError("api_key must not be empty")
         if not model.strip():
             raise ValueError("model must not be empty")
@@ -106,6 +111,7 @@ class OpenAIResponsesAnalyzer:
         self._client = client
         self._redactor = redactor or SecretRedactor()
         self._sleep = sleep
+        self._verify = ssl.create_default_context(cafile=str(tls_ca)) if tls_ca else True
 
     @property
     def model(self) -> str:
@@ -118,7 +124,7 @@ class OpenAIResponsesAnalyzer:
         owned_client: httpx.AsyncClient | None = None
         client = self._client
         if client is None:
-            owned_client = httpx.AsyncClient()
+            owned_client = httpx.AsyncClient(verify=self._verify, trust_env=self._trust_env)
             client = owned_client
 
         try:
@@ -185,7 +191,7 @@ class OpenAIResponsesAnalyzer:
                 response = await client.post(
                     self._url,
                     headers={
-                        "Authorization": f"Bearer {self._api_key}",
+                        **({"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}),
                         "Content-Type": "application/json",
                     },
                     json=payload,

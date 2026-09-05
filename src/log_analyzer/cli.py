@@ -9,13 +9,14 @@ from datetime import timedelta
 import json
 from pathlib import Path
 import signal
+import ssl
 import sys
 from typing import Any
 from urllib.parse import quote
 
 import httpx
 
-from .analysis import NvidiaNimAnalyzer, OpenAIResponsesAnalyzer, SecretRedactor
+from .analysis import NvidiaNimAnalyzer, OnPremAnalyzer, OpenAIResponsesAnalyzer, SecretRedactor
 from .config import AppConfig, load_config, read_secret, require_secret
 from .errors import (
     AlreadyRunningError,
@@ -115,7 +116,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 async def _execute(command: str, config: AppConfig) -> int:
-    openai_key = require_secret(config.openai.api_key_secret)
+    openai_key = (
+        require_secret(config.openai.api_key_secret)
+        if config.openai.auth_required else read_secret(config.openai.api_key_secret)
+    )
     es_api_key = read_secret(config.error_source.api_key_secret)
     es_username = read_secret(config.error_source.username_secret)
     es_password = read_secret(config.error_source.password_secret)
@@ -163,17 +167,17 @@ async def _execute(command: str, config: AppConfig) -> int:
             max_change_context_chars=config.analysis.max_git_change_chars,
         )
         redactor = SecretRedactor()
-        analyzer_class = (
-            NvidiaNimAnalyzer
-            if config.openai.provider == "nvidia_nim"
-            else OpenAIResponsesAnalyzer
-        )
+        analyzer_class = {
+            "nvidia_nim": NvidiaNimAnalyzer,
+            "onprem": OnPremAnalyzer,
+            "openai": OpenAIResponsesAnalyzer,
+        }[config.openai.provider]
         provider_options = (
             {
                 "structured_output": config.openai.structured_output,
                 "enable_thinking": config.openai.enable_thinking,
             }
-            if config.openai.provider == "nvidia_nim"
+            if config.openai.provider != "openai"
             else {}
         )
         analyzer = analyzer_class(
@@ -183,6 +187,7 @@ async def _execute(command: str, config: AppConfig) -> int:
             timeout_seconds=config.openai.timeout_seconds,
             max_output_tokens=config.openai.max_output_tokens,
             redactor=redactor,
+            tls_ca=config.openai.tls_ca,
             **provider_options,
         )
         writer = ReportWriter(config.report.directory, redactor=redactor)
@@ -249,23 +254,26 @@ async def _execute(command: str, config: AppConfig) -> int:
             ) from cleanup_error
 
 
-async def _healthcheck_openai(config: AppConfig, api_key: str) -> None:
+async def _healthcheck_openai(config: AppConfig, api_key: str | None) -> None:
     """Validate authentication and configured model without generating output."""
 
     model = quote(config.openai.model, safe="")
     base_url = config.openai.base_url.rstrip("/")
     url = (
         f"{base_url}/models"
-        if config.openai.provider == "nvidia_nim"
+        if config.openai.provider != "openai"
         else f"{base_url}/models/{model}"
     )
     try:
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(config.openai.timeout_seconds)
+            timeout=httpx.Timeout(config.openai.timeout_seconds),
+            trust_env=config.openai.provider != "onprem",
+            verify=(ssl.create_default_context(cafile=str(config.openai.tls_ca))
+                    if config.openai.tls_ca else True),
         ) as client:
             response = await client.get(
                 url,
-                headers={"Authorization": f"Bearer {api_key}"},
+                headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
             )
     except (httpx.TimeoutException, httpx.TransportError) as exc:
         raise PipelineInfrastructureError(
@@ -275,17 +283,17 @@ async def _healthcheck_openai(config: AppConfig, api_key: str) -> None:
         raise PipelineInfrastructureError(
             f"LLM healthcheck failed with HTTP {response.status_code}"
         )
-    if config.openai.provider == "nvidia_nim":
+    if config.openai.provider != "openai":
         try:
             body = response.json()
         except ValueError as exc:
-            raise PipelineInfrastructureError("NIM model listing was not JSON") from exc
+            raise PipelineInfrastructureError("LLM model listing was not JSON") from exc
         models = body.get("data") if isinstance(body, dict) else None
         if not isinstance(models, list) or not any(
             isinstance(item, dict) and item.get("id") == config.openai.model
             for item in models
         ):
-            raise PipelineInfrastructureError("Configured NIM model was not in the model listing")
+            raise PipelineInfrastructureError("Configured LLM model was not in the model listing")
 
 
 def _install_sigterm_handler(stop_event: asyncio.Event) -> Callable[[], None]:

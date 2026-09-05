@@ -117,6 +117,36 @@ class CliMainTests(unittest.TestCase):
 
 
 class CliExecutionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_run_selects_onprem_without_requiring_cloud_credentials(self) -> None:
+        from log_analyzer.config import OpenAIConfig
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.config(Path(directory)).model_copy(update={"openai": OpenAIConfig(
+                provider="onprem", model="local", base_url="https://llm.internal/v1", auth_required=False)})
+            source = Mock(close=AsyncMock())
+            summary = Mock(has_failures=False)
+            pipeline = Mock(run=AsyncMock(return_value=summary))
+            summary.to_dict.return_value = {}
+            with (
+                patch.object(cli, "require_secret") as required,
+                patch.object(cli, "read_secret", return_value=None),
+                patch.object(cli, "SQLiteStateStore", return_value=Mock()),
+                patch.object(cli, "ElasticsearchErrorSource", return_value=source),
+                patch.object(cli, "GitSourceResolver", return_value=Mock()),
+                patch.object(cli, "OnPremAnalyzer", return_value=Mock()) as local,
+                patch.object(cli, "NvidiaNimAnalyzer") as nim,
+                patch.object(cli, "OpenAIResponsesAnalyzer") as openai,
+                patch.object(cli, "ReportWriter", return_value=Mock()),
+                patch.object(cli, "AnalysisPipeline", return_value=pipeline) as pipeline_class,
+                patch.object(cli, "_emit"),
+            ):
+                self.assertEqual(cli.EXIT_OK, await cli._execute("run", config))
+            required.assert_not_called()
+            nim.assert_not_called()
+            openai.assert_not_called()
+            self.assertIsNone(local.call_args.kwargs["api_key"])
+            self.assertEqual("https://llm.internal/v1", local.call_args.kwargs["base_url"])
+            self.assertEqual(config.openai.cache_analyzer_version("1"), pipeline_class.call_args.kwargs["analyzer_version"])
+
     def config(self, directory: Path) -> AppConfig:
         return AppConfig.model_validate(
             {

@@ -29,7 +29,15 @@ null·정상 입력 회귀 테스트와 추가 확인할 사항이 담깁니다.
 
 **[실제 NVIDIA NIM으로 생성한 샘플 리포트 보기](docs/examples/nim-report.md)** — 합성 Java 오류를 사용했으며 실제 운영 로그는 포함하지 않습니다.
 
-## 가장 빠르게 시작하기
+## 중요망·폐쇄망에서 사용하기
+
+**[압축 해제형 설치 안내](docs/OFFLINE_DEPLOYMENT.md)**를 따르세요.
+RHEL 9 x86_64용 배포본에 **Python 3.11.8, 의존성, 로컬 조회용 Git**을 포함합니다.
+압축을 풀고 `./log-analyzer doctor`로 점검한 뒤 내부 ES·LLM 주소를 설정하면 됩니다.
+실행 시 인터넷 설치·모델 다운로드 없이 내부 Chat Completions 서버를 사용합니다.
+LLM 서버와 모델 가중치는 별도로 준비합니다.
+
+## 인터넷 연결 환경에서 가장 빠르게 시작하기
 
 먼저 Elasticsearch 없이 샘플 오류 한 건을 실제 LLM으로 분석해 보세요.
 필요한 것은 **Git, Python 3.11.x, NVIDIA API 키**입니다. 검증 버전은 Python 3.11.8입니다.
@@ -133,13 +141,15 @@ Elasticsearch에 수집되어 있어야 합니다. Windows에서는 전체 배�
 
 ## 현재 상태
 
-버전 `0.1.0`. 2026-09-05 기준 Java 파싱, Git 소스·변경 이력 조회, LLM 응답 검증,
+버전 `0.2.0`. 2026-09-05 기준 Java 파싱, Git 소스·변경 이력 조회, LLM 응답 검증,
 중복 분석 캐시, 재시도·중단 복구, Markdown 출력과 systemd 설정을 구현했습니다.
 
-- Windows / Python 3.11.8: **114개 중 109 통과, 5개 조건부 제외**
+- Windows / Python 3.11.8: **123개 중 118 통과, 5개 조건부 제외**
+- 중요망 런타임 / Rocky Linux 9 / Python 3.11.8: **123개 중 119 통과, 4개 조건부 제외**
+- 압축파일: 일반 사용자·인터넷 차단·공백 경로에서 실행, 내부 HTTP/HTTPS·사설 CA·Git·리포트 검증 통과
 - Rocky Linux + 실제 Elasticsearch 8.19.21: NIM 추가 전 **99개 중 98 통과, 1개 제외**
 - NVIDIA NIM: 실제 샘플 분석·JSON 검증·리포트 생성 성공
-- 실제 ES → Git → NIM 전체 연결, OpenAI 실제 생성, RHEL 9 systemd 최종 검증은 후속 검증 대상
+- 실제 온프레미스 모델, ES → Git → NIM 전체 연결, OpenAI 실제 생성, RHEL 9 systemd 최종 검증은 후속 검증 대상
 
 오류와 소스는 제한된 범위로 정제하여 선택한 LLM API에 전송합니다. 마스킹만으로
 모든 비밀정보를 식별할 수는 없으므로 전송 가능한 데이터로 시작하세요.

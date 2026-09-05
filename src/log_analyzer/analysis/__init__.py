@@ -20,6 +20,7 @@ from .openai_responses import (
 )
 from .redact import RedactionError, SecretRedactor
 from .nvidia_nim import NvidiaNimAnalyzer
+from .onprem import OnPremAnalyzer
 
 __all__ = [
     "AnalysisRequest",
@@ -32,6 +33,7 @@ __all__ = [
     "InvalidResponseError",
     "OpenAIResponsesAnalyzer",
     "NvidiaNimAnalyzer",
+    "OnPremAnalyzer",
     "PermanentAnalyzerError",
     "RecommendedFix",
     "RedactionError",

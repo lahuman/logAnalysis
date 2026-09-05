@@ -14,10 +14,10 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from .analysis import AnalyzerError, NvidiaNimAnalyzer, SecretRedactor
+from .analysis import AnalyzerError, NvidiaNimAnalyzer, OnPremAnalyzer, SecretRedactor
 from .analysis.models import AnalysisRequest
 from .analysis.openai_responses import InvalidResponseError, PROMPT_VERSION
-from .config import ConfigError, OpenAIConfig, require_secret
+from .config import ConfigError, OpenAIConfig, read_secret, require_secret
 from .report import ReportWriter
 
 
@@ -59,14 +59,16 @@ async def run_smoke(
     output_directory: Path,
     credentials_directory: Path | None = None,
 ) -> Path:
-    if config.provider != "nvidia_nim":
-        raise ConfigError("nim_smoke requires provider=nvidia_nim")
+    if config.provider not in {"nvidia_nim", "onprem"}:
+        raise ConfigError("smoke requires provider=nvidia_nim or onprem")
     environment = dict(os.environ)
     if credentials_directory is not None:
         environment["CREDENTIALS_DIRECTORY"] = str(credentials_directory.resolve())
-    api_key = require_secret(config.api_key_secret, environment)
+    api_key = (require_secret(config.api_key_secret, environment) if config.auth_required
+               else read_secret(config.api_key_secret, environment))
     redactor = SecretRedactor()
-    analyzer = NvidiaNimAnalyzer(
+    analyzer_class = OnPremAnalyzer if config.provider == "onprem" else NvidiaNimAnalyzer
+    analyzer = analyzer_class(
         api_key=api_key,
         model=config.model,
         base_url=config.base_url,
@@ -76,6 +78,7 @@ async def run_smoke(
         enable_thinking=config.enable_thinking,
         max_attempts=1,
         redactor=redactor,
+        tls_ca=config.tls_ca,
     )
     request = smoke_request()
     result = redactor.redact_result(await analyzer.analyze(request))
@@ -90,7 +93,7 @@ async def run_smoke(
         request,
         result,
         event_id=f"nim-smoke-{uuid4().hex}",
-        source_name="nvidia-nim-smoke",
+        source_name="onprem-smoke" if config.provider == "onprem" else "nvidia-nim-smoke",
         model=config.model,
         prompt_version=PROMPT_VERSION,
         first_seen=now,

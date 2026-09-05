@@ -7,6 +7,12 @@
 - 1차 분석 대상: Java 애플리케이션 오류 및 스택 트레이스
 - 저장소: git@github.com:lahuman/logAnalysis.git
 
+중요망 배포는 `codex/important-network`에서 준비하며 Python 3.11.8·의존성·로컬 Git을
+동봉한 RHEL 9 x86_64 압축파일을 사용한다. `provider=onprem`은 명시된 내부 Chat
+Completions 서버에 연결하고, 사설 CA와 선택적 인증을 지원한다. 중요망 실행기는
+클라우드 provider를 거부하며 프록시 환경 변수를 제거한다. 구체적인 설치·실행·교체
+절차는 [중요망 배포 안내](docs/OFFLINE_DEPLOYMENT.md)를 따른다.
+
 이 문서는 현재 구현과 후속 검증 기준을 함께 기록한다. 실행 결과와 남은 검증의
 상세 근거는 [검증 현황](docs/VALIDATION_STATUS.md)을 참고한다.
 NVIDIA NIM Chat Completions 어댑터와 LLM smoke 도구를 추가했고, Nemotron 3 Super로
@@ -381,7 +387,8 @@ class IncidentAnalyzer(Protocol):
         ...
 ```
 
-구현체는 `OpenAIResponsesAnalyzer`와 테스트용 `FakeIncidentAnalyzer` 두 개만 둔다.
+구현체는 `OpenAIResponsesAnalyzer`, `NvidiaNimAnalyzer`, `OnPremAnalyzer`와 테스트용
+`FakeIncidentAnalyzer`를 둔다. onprem은 NIM과 Chat Completions 응답 검증을 공유한다.
 
 ```json
 {

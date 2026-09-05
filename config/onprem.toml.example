@@ -1,0 +1,40 @@
+# 중요망 배포용 전체 설정. 상대 경로는 압축을 푼 디렉터리 기준입니다.
+[run]
+lock_file = "data/run.lock"
+batch_size = 500
+max_concurrency = 2
+
+[error_source]
+url = "https://elasticsearch.internal:9200"
+index = "logs-*"
+tls_ca = "config/certs/internal-ca.pem"
+
+[analysis]
+source_context_lines = 75
+
+[services.order_api]
+repository = "repos/order-api.git"
+branch = "main"
+source_roots = ["src/main/java"]
+application_packages = ["com.example.order"]
+
+[openai]
+# 기존 설정과 호환을 위해 테이블 이름은 [openai]를 유지합니다.
+provider = "onprem"
+base_url = "https://llm.internal:8000/v1"
+model = "replace-with-internal-model-id"
+tls_ca = "config/certs/internal-ca.pem"
+api_key_secret = "LLM_API_KEY"
+auth_required = true
+allow_http = false
+structured_output = "json_schema"
+timeout_seconds = 120
+max_output_tokens = 4096
+# 서버가 지원하는 경우에만 설정: enable_thinking = false
+
+[state]
+path = "data/state.db"
+
+[report]
+directory = "data/reports"
+retention_days = 30

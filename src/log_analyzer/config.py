@@ -154,7 +154,7 @@ class ServiceConfig(_ConfigModel):
 
 
 class OpenAIConfig(_ConfigModel):
-    provider: Literal["openai", "nvidia_nim"] = "openai"
+    provider: Literal["openai", "nvidia_nim", "onprem"] = "openai"
     base_url: str = "https://api.openai.com/v1"
     model: str
     timeout_seconds: float = Field(default=60.0, gt=0, le=600)
@@ -162,6 +162,9 @@ class OpenAIConfig(_ConfigModel):
     api_key_secret: str = "OPENAI_API_KEY"
     structured_output: Literal["json_schema", "guided_json", "json_object"] = "json_schema"
     enable_thinking: bool | None = None
+    auth_required: bool = True
+    allow_http: bool = False
+    tls_ca: Path | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -170,6 +173,11 @@ class OpenAIConfig(_ConfigModel):
             value = dict(value)
             value.setdefault("base_url", "https://integrate.api.nvidia.com/v1")
             value.setdefault("api_key_secret", "NVIDIA_API_KEY")
+        if isinstance(value, dict) and value.get("provider") == "onprem":
+            value = dict(value)
+            if not value.get("base_url"):
+                raise ValueError("onprem requires an explicit internal base_url")
+            value.setdefault("api_key_secret", "LLM_API_KEY")
         return value
 
     @model_validator(mode="after")
@@ -177,7 +185,13 @@ class OpenAIConfig(_ConfigModel):
         if self.provider == "openai" and self.structured_output != "json_schema":
             raise ValueError("OpenAI Responses requires json_schema output")
         if self.provider == "openai" and self.enable_thinking is not None:
-            raise ValueError("enable_thinking is only supported for NVIDIA NIM")
+            raise ValueError("enable_thinking requires a Chat Completions provider")
+        if self.provider != "onprem" and (not self.auth_required or self.allow_http):
+            raise ValueError("optional authentication and HTTP are only supported for onprem")
+        if urlparse(self.base_url).scheme == "http" and not (
+            self.provider == "onprem" and self.allow_http
+        ):
+            raise ValueError("HTTP requires provider=onprem and allow_http=true")
         return self
 
     def cache_analyzer_version(self, version: str) -> str:
@@ -192,8 +206,8 @@ class OpenAIConfig(_ConfigModel):
     def validate_url(cls, value: str) -> str:
         value = value.rstrip("/")
         parsed = urlparse(value)
-        if parsed.scheme != "https" or not parsed.netloc:
-            raise ValueError("LLM base_url must be an absolute HTTPS URL")
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("LLM base_url must be an absolute HTTP(S) URL")
         if parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError(
                 "LLM base_url must not contain userinfo, query parameters, or a fragment"

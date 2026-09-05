@@ -6,7 +6,11 @@
 
 ## LLM 선택
 
-기존 설정과의 호환성을 위해 NVIDIA NIM도 `[openai]` 테이블을 사용합니다.
+기존 설정과의 호환성을 위해 NVIDIA NIM과 온프레미스 모두 `[openai]` 테이블을 사용합니다.
+중요망은 [onprem.toml.example](../config/onprem.toml.example)과
+[압축 배포 안내](OFFLINE_DEPLOYMENT.md)를 사용하세요. `provider="onprem"`에는 내부
+`base_url`을 반드시 명시해야 하며 기본 secret 이름은 `LLM_API_KEY`입니다.
+Chat Completions를 호출하고 환경 변수 프록시를 사용하지 않습니다.
 
 | 항목 | OpenAI | NVIDIA NIM |
 |---|---|---|
@@ -23,8 +27,11 @@ URL과 secret 이름은 생략했을 때만 공급자별 기본값이 적용됩�
 |---|---|---|
 | `timeout_seconds` | 60 | HTTP 요청 timeout; NIM 예시는 120 |
 | `max_output_tokens` | 2000 | 출력 상한; NIM 예시는 4096, 모델 제한 확인 필요 |
-| `structured_output` | `json_schema` | NIM은 `guided_json`, `json_object`도 명시적으로 선택 가능 |
-| `enable_thinking` | 미지정 | NIM 전용; 선택 모델의 예시는 false |
+| `structured_output` | `json_schema` | NIM/onprem은 `guided_json`, `json_object`도 명시적으로 선택 가능 |
+| `enable_thinking` | 미지정 | NIM/onprem 서버의 지원 확인 후 설정 |
+| `tls_ca` | 미지정 | LLM 사설 CA PEM; TLS 검증 비활성화는 지원하지 않음 |
+| `auth_required` | true | onprem만 false 허용; 키가 존재하면 여전히 Bearer 인증 |
+| `allow_http` | false | onprem만 true 허용; 내부 HTTP 연결을 명시적으로 선택 |
 
 키를 TOML에 직접 넣는 `api_key` 필드는 지원하지 않습니다. 환경 변수 또는 credential
 파일을 사용합니다. [NIM 상세 안내](NVIDIA_NIM.md)에서 출력 모드 차이를 확인하세요.

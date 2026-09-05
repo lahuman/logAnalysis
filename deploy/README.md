@@ -1,5 +1,9 @@
 # RHEL 9 설치와 주기 실행
 
+외부 접속 없이 사용하는 중요망 RHEL 9 / Python 3.11.8 환경은
+[압축 해제형 설치 안내](../docs/OFFLINE_DEPLOYMENT.md)를 먼저 사용하세요.
+아래 내용은 인터넷에서 Python 패키지를 설치하는 기존 배포 경로입니다.
+
 목표 환경은 RHEL 9 / Python 3.11.8입니다. Git과 해당 Python을 먼저 준비하세요.
 아래 명령은 내려받은 `logAnalysis` 저장소 루트에서 실행합니다. 시스템의 기본 Python을
 교체하지 않고 전용 가상환경을 사용합니다. 실제 RHEL 9의 systemd·SELinux 검증은

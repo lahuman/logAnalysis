@@ -6,6 +6,7 @@ import asyncio
 import json
 from collections.abc import Mapping
 from typing import Any, Literal
+from pathlib import Path
 
 import httpx
 from pydantic import ValidationError
@@ -31,7 +32,7 @@ class NvidiaNimAnalyzer(OpenAIResponsesAnalyzer):
     def __init__(
         self,
         *,
-        api_key: str,
+        api_key: str | None,
         model: str,
         base_url: str = "https://integrate.api.nvidia.com/v1",
         structured_output: Literal["json_schema", "guided_json", "json_object"] = "json_schema",
@@ -42,6 +43,7 @@ class NvidiaNimAnalyzer(OpenAIResponsesAnalyzer):
         client: httpx.AsyncClient | None = None,
         redactor: SecretRedactor | None = None,
         sleep: Sleep = asyncio.sleep,
+        tls_ca: Path | None = None,
     ) -> None:
         if structured_output not in {"json_schema", "guided_json", "json_object"}:
             raise ValueError("unsupported NIM structured output mode")
@@ -57,6 +59,7 @@ class NvidiaNimAnalyzer(OpenAIResponsesAnalyzer):
             client=client,
             redactor=redactor,
             sleep=sleep,
+            tls_ca=tls_ca,
         )
 
     def _payload(self, request: AnalysisRequest) -> dict[str, Any]:

@@ -46,9 +46,10 @@ docker compose down -v --remove-orphans
 SQLite 상태, 분석 캐시 및 Markdown 생성을 함께 검증한다. Linux에서만 가능한
 `flock` 경쟁과 비정상 종료 테스트도 전체 테스트에 포함된다.
 
-NIM 추가 후 현재 테스트는 총 114개이며 ES 연동 가능한 Linux 환경에서는 Windows 전용
-1개를 제외한 113개 통과가 기대값이다. 이 최신 스위트의 Linux 실행은 아직 미검증이며,
-앞서 기록한 Rocky Linux 결과는 NIM 추가 전 99개 기준이다. 실제 ES 통합 테스트 3개는 기본 paging·캐시,
+NIM·onprem 추가 후 현재 테스트는 총 123개이며 ES 연동 가능한 Linux 환경에서는 Windows 전용
+1개를 제외한 122개 통과가 기대값이다. 중요망 배포 런타임으로 Rocky Linux에서 119개 통과·
+4개 제외를 확인했다(ES 3개·Windows 전용 1개). 별도의 과거 Rocky Linux ES 결과는 NIM 추가 전
+99개 기준이다. 실제 ES 통합 테스트 3개는 기본 paging·캐시,
 공개 사례 기반 Java 오류 7종, commit 없는 로그의 ref·blame·diff 경로를 검증한다.
 Java 사례 수와 테스트 메서드 수는 다르다.
 
