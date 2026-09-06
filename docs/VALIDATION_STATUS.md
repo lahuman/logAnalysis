@@ -1,28 +1,28 @@
 # 구현 및 검증 현황
 
-기준일: 2026-09-05. 현재 파일, 자동 테스트와 이전 구현 작업의 실행 결과를 기준으로
-작성했다. 현재 버전은 `0.2.0`이다. 중요망 작업에서는 기존 Rocky Linux 9 VM에서
-동봉 Python 3.11.8·Git으로 최신 테스트와 실제 압축파일의 오프라인 실행을 확인했다.
-과거 ES·NIM 결과와 이번 합성 서버 검증을 구분해 기록한다.
+기준일: 2026-09-06. 현재 버전은 `0.3.0`이다. Oracle SQL 수집기를 추가했으며
+Windows / Python 3.11.8에서 139개 중 133 통과·6 제외를 확인했다.
+제외 항목은 실제 Oracle 1개·ES 3개·POSIX 잠금 2개다. Oracle 접속 정보가 없어
+실제 DB 연결·SQL 실행·TCPS는 아직 검증하지 않았다. [Oracle 안내](ORACLE.md)를 참고한다.
 
-후속 NIM·onprem 연동 구현을 반영했다. 최신 Windows 결과는 123개 중 118 통과·5 제외이며,
-실제 NIM 합성 Java 분석과 리포트 생성도 성공했다. [NIM 연동 안내](NVIDIA_NIM.md)를 참고한다.
+이전 ES·NIM 실제 연결 결과와 중요망 합성 서버 검증은 아래에 시점별로 구분했다.
 
 ## 구현된 범위
 
 | 영역 | 현재 동작 |
 |---|---|
 | 수집 | Elasticsearch 8.x 비동기 클라이언트, PIT·search_after·heartbeat, 고정 조회 구간, 중복 제거, 잘못된 문서 격리 |
+| Oracle SQL | 테이블·뷰 컬럼 매핑, 비동기 Thin 커서, 바인드 조회·UTC 정규화·CLOB 제한; 실제 DB 미검증 |
 | 파싱 | Java 예외 체인, suppressed·생략 프레임·module·inner class·default package, 구조화 프레임, 범용 fallback |
 | 소스 조회 | 이벤트 commit 우선; commit이 없으면 로컬 ref SHA 고정, 오류 라인 blame과 해당 파일의 최근 patch 이력 조회 |
 | 분석 | 정제·크기 제한한 Context, Responses HTTP 호출, 구조화 응답, 파일·라인 근거 필터링 |
 | NIM 연동 | Chat Completions 어댑터, 출력 모드 선택, 공급자별 캐시 구분, 합성 Java smoke 도구 |
 | 중요망 | onprem Chat Completions, 사설 CA, 선택적 인증, 명시적 HTTP 허용, 프록시 비사용 |
-| 압축 배포 | Python 3.11.8·Linux 의존성 24개·로컬 Git 동봉, checksum/manifest, 오프라인 doctor, 설정 점검·smoke 실행기 |
+| 압축 배포 | Python 3.11.8·Linux 의존성 28개·로컬 Git 동봉, checksum/manifest, 오프라인 doctor, 설정 점검·smoke 실행기 |
 | 상태 | SQLite 체크포인트·작업·분석 캐시·재시도·중단 복구·보존 정리 큐 |
 | 출력·운영 | Markdown 리포트, CLI 상태 요약·종료 코드, POSIX 잠금, systemd service·timer와 credential 예시 |
 
-패키지 버전은 `0.2.0`, 프롬프트 버전은 `java-incident-v2`, 분석기 버전은 `1`이다.
+패키지 버전은 `0.3.0`, 프롬프트 버전은 `java-incident-v2`, 분석기 버전은 `1`이다.
 중요망 브랜치의 전체 작업·산출물 기준은 [브랜치 작업 정리](IMPORTANT_NETWORK.md)에 있다.
 현재 리포트는 이벤트별로 생성하며 재발 시 기존 리포트를 갱신하지 않는다.
 대표 리포트 갱신과 오류 그룹의 최초·최종 시각 집계는 후속 개선안이며 미구현이다.
@@ -33,6 +33,9 @@
 
 | 시점·환경 | 실행 결과 | 제외 또는 제한 |
 |---|---|---|
+| 2026-09-06 Oracle 추가 / Windows Python 3.11.8 | 139개 실행, 133 통과·6 제외; compileall·pip check·diff check 통과 | Oracle 단위·연결 경로 15개 통과; 실제 Oracle 1개·ES 3개·POSIX 2개 제외 |
+| 2026-09-06 Oracle 추가 / Rocky Linux 9, 동봉 Python 3.11.8 | 139개 실행, 134 통과·5 제외 | 실제 Oracle 1개·ES 3개·Windows 전용 1개 제외 |
+| 0.3.0 압축파일 / 일반 사용자 / 외부 통신 차단 | Oracle 드라이버를 포함한 28개 의존성 로딩, 공백 경로 실행, HTTP 인증·HTTPS 사설 CA, 합성 리포트 3개, Git·변조 감지 통과 | Oracle DB 접속과 실제 내부 모델 추론은 제외; 배포본 제작 후 검증이므로 이 기록은 배포본 내 문서보다 최신 |
 | 2026-09-05 이전 구현 작업: Rocky Linux VM + 실제 Elasticsearch 8.19.21 | 99개 실행, 98 통과, 실패 0; `OK (skipped=1)` | Windows 전용 잠금 미지원 테스트 1개 제외 |
 | 2026-09-05 이번 문서 현행화: Windows + Python 3.11.8 | 99개 실행, 94 통과, 실패 0; `OK (skipped=5)` | ES URL 미설정으로 통합 테스트 3개, POSIX 잠금 테스트 2개 제외 |
 | 이번 Windows 확인: `python -m compileall -q src tests` | 통과 | 문법 컴파일 확인 |
@@ -104,6 +107,7 @@ Docker Compose 구성은 준비되어 있지만, 위 VM 테스트 결과를 Dock
 | RHEL 9 최종 호환 | 목표 Python 3.11.8, SELinux, 파일 권한, 내부 CA와 TLS를 실제 대상 환경에서 확인 |
 | 실제 온프레미스 모델 | 제품·모델·내부 endpoint 선정 후 smoke 및 ES → Git → LLM 전체 배치를 실제 환경에서 확인 |
 | 기관별 운영 조건 | SELinux·송신 ACL·스케줄러 및 FIPS 요구를 최종 서버에서 확인; 동봉 OpenSSL의 FIPS 적합성을 검증한 것은 아님 |
+| 운영 Oracle 계약 | DB 버전·테이블·컬럼·시각 기준·SELECT 권한·TCPS 확인 후 읽기 전용 통합 테스트와 실제 내부 LLM 배치 수행 |
 | 운영 Elasticsearch 계약 | 실제 버전·인덱스·필드 mapping·multiline 결합·조회 권한·지연 구간 확인 |
 | 운영 소스·분석 품질 | 서비스별 로컬 ref 갱신 방식, source root·package, 배포 소스와 fallback 소스 차이, 전송 허용 범위와 결과 품질 확인 |
 

@@ -1,0 +1,176 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "logAnalysis · 폐쇄망 반입부터 첫 실행까지",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "build-zone",
+      "label": "인터넷 연결 빌드 환경"
+    },
+    {
+      "id": "internal-zone",
+      "label": "중요망 대상 서버"
+    },
+    {
+      "id": "operations-zone",
+      "label": "중요망 주기 운영"
+    }
+  ],
+  "mainPath": [
+    "prepare-build",
+    "bundle-runtime",
+    "transfer-package",
+    "unpack-doctor",
+    "configure-internal",
+    "check-connections",
+    "run-analysis",
+    "schedule-batch"
+  ],
+  "nodes": [
+    {
+      "id": "prepare-build",
+      "lane": "build-zone",
+      "col": 0,
+      "type": "backend",
+      "label": "배포본 빌드",
+      "sublabel": "RHEL 9 x86_64",
+      "width": 132
+    },
+    {
+      "id": "bundle-runtime",
+      "lane": "build-zone",
+      "col": 1,
+      "type": "database",
+      "label": "런타임 압축",
+      "sublabel": "Python · Git",
+      "width": 132
+    },
+    {
+      "id": "transfer-package",
+      "lane": "build-zone",
+      "col": 2,
+      "type": "external",
+      "label": "압축파일 반입",
+      "sublabel": "tar.gz + SHA-256",
+      "width": 132
+    },
+    {
+      "id": "unpack-doctor",
+      "lane": "internal-zone",
+      "col": 2,
+      "type": "backend",
+      "label": "압축 해제·점검",
+      "sublabel": "checksum · doctor",
+      "width": 132
+    },
+    {
+      "id": "configure-internal",
+      "lane": "internal-zone",
+      "col": 3,
+      "type": "security",
+      "label": "내부 환경 설정",
+      "sublabel": "DB · LLM · Git",
+      "width": 132
+    },
+    {
+      "id": "check-connections",
+      "lane": "internal-zone",
+      "col": 4,
+      "type": "backend",
+      "label": "연결 확인",
+      "sublabel": "설정 · 모델 · 접속",
+      "width": 132
+    },
+    {
+      "id": "run-analysis",
+      "lane": "internal-zone",
+      "col": 5,
+      "type": "backend",
+      "label": "첫 분석 실행",
+      "sublabel": "run · 결과 검토",
+      "width": 132
+    },
+    {
+      "id": "schedule-batch",
+      "lane": "operations-zone",
+      "col": 5,
+      "type": "backend",
+      "label": "주기 운영 등록",
+      "sublabel": "cron / systemd",
+      "width": 132
+    }
+  ],
+  "edges": [
+    {
+      "id": "prepare-build-to-bundle-runtime",
+      "from": "prepare-build",
+      "to": "bundle-runtime",
+      "label": "빌드",
+      "role": "main"
+    },
+    {
+      "id": "bundle-runtime-to-transfer-package",
+      "from": "bundle-runtime",
+      "to": "transfer-package",
+      "label": "체크섬 생성",
+      "role": "main"
+    },
+    {
+      "id": "transfer-package-to-unpack-doctor",
+      "from": "transfer-package",
+      "to": "unpack-doctor",
+      "label": "파일 이동",
+      "role": "main",
+      "variant": "security"
+    },
+    {
+      "id": "unpack-doctor-to-configure-internal",
+      "from": "unpack-doctor",
+      "to": "configure-internal",
+      "label": "점검 통과",
+      "role": "main"
+    },
+    {
+      "id": "configure-internal-to-check-connections",
+      "from": "configure-internal",
+      "to": "check-connections",
+      "label": "설정 완료",
+      "role": "main"
+    },
+    {
+      "id": "check-connections-to-run-analysis",
+      "from": "check-connections",
+      "to": "run-analysis",
+      "label": "연결 확인",
+      "role": "main"
+    },
+    {
+      "id": "run-analysis-to-schedule-batch",
+      "from": "run-analysis",
+      "to": "schedule-batch",
+      "label": "결과 확인 후",
+      "role": "main"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "대상 환경",
+      "items": [
+        "RHEL 9 x86_64 / Python 3.11.8. 대상 서버에서 pip·dnf·컨테이너 설치가 필요 없습니다.",
+        "doctor·check-config는 무통신, smoke는 내부 LLM, healthcheck·run은 내부 DB/LLM을 사용합니다."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "별도 반입·설정",
+      "items": [
+        "실제 로그·비밀번호·wallet·Git 저장소·모델 가중치는 기본 압축파일에 포함하지 않습니다.",
+        "인증은 config/credentials, 상태·리포트는 data에 보관합니다."
+      ]
+    }
+  ]
+}

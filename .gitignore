@@ -24,3 +24,4 @@ state/
 build/
 dist/
 .env.*
+config/oracle-wallet/

@@ -23,7 +23,7 @@ NVIDIA NIM Chat Completions 어댑터와 LLM smoke 도구를 추가했고, Nemot
 
 운영 로그 저장소에서 오류를 주기적으로 조회하고, 오류가 발생한 소스 코드 위치를 찾아 관련 코드와 로그를 OpenAI 모델에 전달한 뒤, 근거가 포함된 분석 및 해결 리포트를 생성한다.
 
-초기 오류 저장소는 Elasticsearch지만 핵심 로직은 이에 종속되지 않는다. 이후 PostgreSQL, MySQL, Oracle, REST API 또는 다른 로그 저장소로 교체할 수 있어야 한다.
+초기 오류 저장소는 Elasticsearch지만 핵심 로직은 이에 종속되지 않는다. 중요망 브랜치 0.3.0에서는 Oracle SQL 어댑터를 추가했다. PostgreSQL, MySQL, REST API는 후속 요구에 따라 확장할 수 있다.
 
 ## 2. 핵심 설계 결정
 
@@ -159,7 +159,10 @@ class ErrorSource(Protocol):
 - 분석 상태 저장소와 오류 원본 저장소를 분리한다.
 - 오류 저장소는 read-only로 접근한다.
 
-초기에는 `ElasticsearchErrorSource`와 테스트용 `InMemoryErrorSource`만 구현한다. 다른 DB 어댑터와 관련 의존성은 실제 요구가 생길 때 추가한다.
+`ElasticsearchErrorSource`, `OracleErrorSource`와 테스트용 `InMemoryErrorSource`를 제공한다.
+Oracle은 비동기 Thin 연결의 단일 SELECT 커서를 페이지별로 읽어 `ErrorEvent`로 변환한다.
+발생시각·ID 순서, 바인드 변수, UTC 정규화, CLOB 길이 제한을 적용하며 상태·리포트 경로는 공유한다.
+연결·매핑과 실제 DB 미검증 범위는 [Oracle 안내](docs/ORACLE.md)를 따른다.
 
 ## 7. Elasticsearch 초기 연동
 

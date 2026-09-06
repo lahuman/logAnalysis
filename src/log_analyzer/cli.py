@@ -28,7 +28,7 @@ from .pipeline import AnalysisPipeline, PipelineInfrastructureError
 from .report import ReportWriter
 from .run_lock import RunLock
 from .source_code import GitSourceResolver, SourceResolutionError
-from .sources import ElasticsearchErrorSource
+from .sources import ElasticsearchErrorSource, ErrorSource, OracleErrorSource
 from .storage import SQLiteStateStore
 
 
@@ -120,43 +120,55 @@ async def _execute(command: str, config: AppConfig) -> int:
         require_secret(config.openai.api_key_secret)
         if config.openai.auth_required else read_secret(config.openai.api_key_secret)
     )
-    es_api_key = read_secret(config.error_source.api_key_secret)
-    es_username = read_secret(config.error_source.username_secret)
-    es_password = read_secret(config.error_source.password_secret)
-    if es_api_key:
-        es_username = None
-        es_password = None
-    elif (es_username is None) != (es_password is None):
-        raise ConfigError(
-            "Elasticsearch username and password credentials must be provided together"
-        )
+    if config.error_source.type == "oracle":
+        oracle_username = require_secret(config.error_source.username_secret)
+        oracle_password = require_secret(config.error_source.password_secret)
+        oracle_wallet_password = read_secret(config.error_source.wallet_password_secret)
+    else:
+        es_api_key = read_secret(config.error_source.api_key_secret)
+        es_username = read_secret(config.error_source.username_secret)
+        es_password = read_secret(config.error_source.password_secret)
+        if es_api_key:
+            es_username = None
+            es_password = None
+        elif (es_username is None) != (es_password is None):
+            raise ConfigError(
+                "Elasticsearch username and password credentials must be provided together"
+            )
 
     state: SQLiteStateStore | None = None
-    source: ElasticsearchErrorSource | None = None
+    source: ErrorSource | None = None
     try:
         state = SQLiteStateStore(
             config.state.path,
             busy_timeout_seconds=config.state.busy_timeout_seconds,
         )
         try:
-            source = ElasticsearchErrorSource(
-                url=config.error_source.url,
-                index=config.error_source.index,
-                username=es_username,
-                password=es_password,
-                api_key=es_api_key,
-                ca_certs=(
-                    str(config.error_source.tls_ca)
-                    if config.error_source.tls_ca is not None
-                    else None
-                ),
-                verify_tls=config.error_source.verify_tls,
-                request_timeout=config.error_source.request_timeout_seconds,
-                source_name=config.error_source.name,
-            )
+            if config.error_source.type == "oracle":
+                source = OracleErrorSource(
+                    config=config.error_source, username=oracle_username, password=oracle_password,
+                    wallet_password=oracle_wallet_password,
+                    max_text_characters=config.analysis.max_log_characters,
+                )
+            else:
+                source = ElasticsearchErrorSource(
+                    url=config.error_source.url,
+                    index=config.error_source.index,
+                    username=es_username,
+                    password=es_password,
+                    api_key=es_api_key,
+                    ca_certs=(
+                        str(config.error_source.tls_ca)
+                        if config.error_source.tls_ca is not None
+                        else None
+                    ),
+                    verify_tls=config.error_source.verify_tls,
+                    request_timeout=config.error_source.request_timeout_seconds,
+                    source_name=config.error_source.name,
+                )
         except (ImportError, ValueError, OSError) as exc:
             raise PipelineInfrastructureError(
-                "Elasticsearch client could not be initialized"
+                "Error source client could not be initialized"
             ) from exc
 
         services = {service.name: service for service in config.services}

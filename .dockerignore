@@ -20,3 +20,4 @@ config/*.toml
 repos
 build
 dist
+config/oracle-wallet/

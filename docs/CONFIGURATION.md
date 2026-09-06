@@ -43,7 +43,7 @@ URL과 secret 이름은 생략했을 때만 공급자별 기본값이 적용됩�
 
 | 설정 | 기본값 | 설명 |
 |---|---|---|
-| `type` | `elasticsearch` | 현재 지원하는 수집기 |
+| `type` | `elasticsearch` | ES 선택; 생략 시 기존 ES 설정과 호환 |
 | `name` | `elasticsearch` | SQLite에서 수집 대상을 구분하는 이름 |
 | `tls_ca` | 미지정 | 사설 인증기관의 CA 인증서 경로 |
 | `verify_tls` | true | false는 설정 검증에서 거부 |
@@ -55,9 +55,19 @@ HTTPS URL만 허용하며 URL에 사용자명·비밀번호·쿼리 문자열을
 인증정보가 모두 없으면 무인증 HTTPS 연결을 시도합니다. ES 권한은 사용하는 인덱스의
 조회·PIT 열기/닫기와 healthcheck가 가능해야 합니다.
 
+## Oracle SQL
+
+`error_source.type = "oracle"`이면 ES 설정 대신 `dsn`, `table`과
+`[error_source.columns]` 매핑을 사용합니다. 전체 예시는
+[oracle-onprem.toml.example](../config/oracle-onprem.toml.example)입니다.
+ES의 `url`, `index`, `tls_ca` 등 전용 필드를 Oracle 설정에 섞으면 검증에서 거부합니다.
+인증은 `ORACLE_USERNAME`·`ORACLE_PASSWORD` 환경 변수 또는 credential 파일을 사용합니다.
+DATE/TIMESTAMP는 `timestamp_timezone`, 시간대 포함 TIMESTAMP는 `timestamp_type="timestamp_tz"`로
+지정합니다. 필수 컬럼·TCPS wallet·조회 동작은 [Oracle 안내](ORACLE.md)를 따릅니다.
+
 ## 서비스와 Git
 
-`[services.orders]`의 `orders`는 ES 로그의 `service.name`과 일치해야 합니다.
+`[services.orders]`의 `orders`는 ES 로그의 `service.name` 또는 Oracle의 `service` 매핑 값과 일치해야 합니다.
 서비스가 여러 개면 서비스마다 테이블을 추가합니다.
 
 | 설정 | 기본값 / 필수 여부 | 설명 |

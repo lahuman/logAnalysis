@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "logAnalysis · 중요망 전체 구성",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1390,
+      690
+    ]
+  },
+  "components": [
+    {
+      "id": "log-store",
+      "type": "database",
+      "label": "ES 또는 Oracle",
+      "sublabel": "설정으로 한 수집원 선택",
+      "pos": [
+        55,
+        286
+      ],
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "source-adapter",
+      "type": "backend",
+      "label": "오류 수집 어댑터",
+      "sublabel": "PIT / Thin SELECT",
+      "pos": [
+        395,
+        286
+      ],
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "analysis-pipeline",
+      "type": "backend",
+      "label": "분석 파이프라인",
+      "sublabel": "파싱 · 소스 · 캐시 · 검증",
+      "pos": [
+        735,
+        286
+      ],
+      "size": [
+        210,
+        76
+      ]
+    },
+    {
+      "id": "incident-reports",
+      "type": "database",
+      "label": "이벤트별 리포트",
+      "sublabel": "data/reports/*.md",
+      "pos": [
+        1120,
+        286
+      ],
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "batch-entry",
+      "type": "backend",
+      "label": "배치 실행기",
+      "sublabel": "수동 / cron / systemd",
+      "pos": [
+        395,
+        75
+      ],
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "onprem-llm",
+      "type": "external",
+      "label": "내부 LLM 서버",
+      "sublabel": "Chat Completions · 별도 준비",
+      "pos": [
+        735,
+        75
+      ],
+      "size": [
+        210,
+        76
+      ]
+    },
+    {
+      "id": "sqlite-state",
+      "type": "database",
+      "label": "SQLite 상태·캐시",
+      "sublabel": "data/state.db",
+      "pos": [
+        395,
+        515
+      ],
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "local-git",
+      "type": "database",
+      "label": "반입한 Git 소스",
+      "sublabel": "commit / ref · blame · diff",
+      "pos": [
+        735,
+        515
+      ],
+      "size": [
+        210,
+        76
+      ]
+    },
+    {
+      "id": "incident-reviewer",
+      "type": "external",
+      "label": "분석 담당자",
+      "sublabel": "원인·수정안·검증 절차 검토",
+      "pos": [
+        1120,
+        515
+      ],
+      "size": [
+        190,
+        76
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "중요망 내부 · 운영 시 외부 인터넷 연결 없음",
+      "wraps": [
+        "log-store",
+        "source-adapter",
+        "analysis-pipeline",
+        "incident-reports",
+        "batch-entry",
+        "onprem-llm",
+        "sqlite-state",
+        "local-git",
+        "incident-reviewer"
+      ],
+      "pad": 32
+    }
+  ],
+  "connections": [
+    {
+      "id": "log-store-to-source-adapter",
+      "from": "log-store",
+      "to": "source-adapter",
+      "label": "조회 결과",
+      "variant": "emphasis"
+    },
+    {
+      "id": "source-adapter-to-analysis-pipeline",
+      "from": "source-adapter",
+      "to": "analysis-pipeline",
+      "label": "ErrorEvent",
+      "variant": "emphasis"
+    },
+    {
+      "id": "analysis-pipeline-to-incident-reports",
+      "from": "analysis-pipeline",
+      "to": "incident-reports",
+      "label": "검증 후 저장",
+      "variant": "emphasis"
+    },
+    {
+      "id": "batch-entry-to-source-adapter",
+      "from": "batch-entry",
+      "to": "source-adapter",
+      "label": "run · 잠금",
+      "labelDy": 70
+    },
+    {
+      "id": "analysis-pipeline-to-onprem-llm",
+      "from": "analysis-pipeline",
+      "to": "onprem-llm",
+      "label": "정제 요청 / 응답"
+    },
+    {
+      "id": "analysis-pipeline-to-local-git",
+      "from": "analysis-pipeline",
+      "to": "local-git",
+      "label": "소스 조회",
+      "labelDy": 70
+    },
+    {
+      "id": "analysis-pipeline-to-sqlite-state",
+      "from": "analysis-pipeline",
+      "to": "sqlite-state",
+      "label": "상태·캐시 조회 / 저장"
+    },
+    {
+      "id": "incident-reports-to-incident-reviewer",
+      "from": "incident-reports",
+      "to": "incident-reviewer",
+      "label": "리포트 열람",
+      "labelDy": 70
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "프로그램과 별도 서버",
+      "items": [
+        "분석기는 Python 3.11.8과 로컬 Git을 동봉합니다.",
+        "Oracle/ES·내부 LLM·모델·애플리케이션 소스는 별도로 준비합니다."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "수집 후 같은 처리 경로",
+      "items": [
+        "ES는 PIT, Oracle은 단일 SELECT 커서를 페이지 단위로 읽습니다.",
+        "로그 저장소를 바꿔도 중복·캐시·리포트 처리 방식은 같습니다."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "표시한 범위",
+      "items": [
+        "화살표는 조회 결과·호출·저장 관계이며 물리 서버 배치를 확정하지 않습니다.",
+        "Oracle 실서버와 실제 내부 LLM 연결은 아직 미검증입니다."
+      ]
+    }
+  ]
+}

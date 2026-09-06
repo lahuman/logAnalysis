@@ -1,0 +1,29 @@
+diff --git a/archify/assets/template.html b/archify/assets/template.html
+index 28c151c..b1e058f 100644
+--- a/archify/assets/template.html
++++ b/archify/assets/template.html
+@@ -31,14 +31,7 @@
+       } catch (_) {}
+     })();
+   </script>
+-  <!-- Async font load: a blackholed network must not block first paint.
+-       The body font stack falls back to system monospace until it lands. -->
+-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+-        rel="stylesheet" media="print" onload="this.media='all'">
+-  <noscript>
+-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+-  </noscript>
++  <!-- logAnalysis offline profile: use system fonts without external requests. -->
+   <style>
+     /* ==========================================================
+        THEME VARIABLES — switch by toggling [data-theme] on <html>
+@@ -351,7 +344,7 @@
+     * { margin: 0; padding: 0; box-sizing: border-box; }
+ 
+     body {
+-      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace;
++      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Malgun Gothic', 'Noto Sans CJK KR', 'Apple SD Gothic Neo', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+       background: var(--bg);
+       min-height: 100vh;
+       padding: 2rem;

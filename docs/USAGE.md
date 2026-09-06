@@ -6,7 +6,8 @@
 
 ## 1. 로그 형태 확인
 
-현재 입력은 Elasticsearch입니다. 하나의 오류와 전체 stack trace를 하나의 ES 문서에
+아래는 Elasticsearch 입력 기준입니다. Oracle 테이블·뷰의 오류를 읽으려면
+[Oracle SQL 연결 안내](ORACLE.md)를 먼저 따르세요. 이후 소스 조회·분석·리포트는 동일합니다. 하나의 오류와 전체 stack trace를 하나의 ES 문서에
 저장해야 합니다. 다음은 `orders` 서비스의 로그 형태 예시이며 Git commit은 생략했습니다.
 
 ```json

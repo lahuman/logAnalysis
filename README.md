@@ -3,17 +3,20 @@
 **Java 오류 로그와 소스 코드를 함께 읽고, 원인 후보·수정 방법·검증 절차를 리포트로 정리하는 도구입니다.**
 
 반복되는 오류를 사람이 하나씩 찾아보는 시간을 줄이는 것이 목표입니다.
-Elasticsearch에서 오류를 가져오고, Java stack trace로 Git 소스 위치를 찾은 뒤,
+Elasticsearch 또는 Oracle SQL에서 오류를 가져오고, Java stack trace로 Git 소스 위치를 찾은 뒤,
 LLM 분석을 검증해 Markdown으로 저장합니다. 최종 판단과 코드 수정은 사람이 합니다.
 
 ```text
-Elasticsearch 오류 → Java 예외·소스 위치 파싱 → Git 소스 확인
+ES / Oracle 오류 → Java 예외·소스 위치 파싱 → Git 소스 확인
                   → LLM 분석 → 파일·라인 근거 검증 → Markdown 리포트
 ```
 
 로그에 Git commit이 없어도 사용할 수 있습니다. 설정한 브랜치의 소스를 읽고
 오류 라인의 blame과 해당 파일의 최근 변경 이력을 참고합니다. 이 경우 실제 배포
 버전은 알 수 없으므로 변경 이력만으로 장애 원인을 확정하지 않습니다.
+
+**[그림으로 보는 전체 구성·처리 흐름·폐쇄망 설치](docs/ARCHITECTURE.md)**에서
+Archify로 작성한 도식 3종과 브라우저용 HTML을 확인할 수 있습니다.
 
 ## 어떤 결과를 얻나요?
 
@@ -41,9 +44,13 @@ git clone --branch codex/important-network https://github.com/lahuman/logAnalysi
 
 **[압축 해제형 설치 안내](docs/OFFLINE_DEPLOYMENT.md)**를 따르세요.
 RHEL 9 x86_64용 배포본에 **Python 3.11.8, 의존성, 로컬 조회용 Git**을 포함합니다.
-압축을 풀고 `./log-analyzer doctor`로 점검한 뒤 내부 ES·LLM 주소를 설정하면 됩니다.
+압축을 풀고 `./log-analyzer doctor`로 점검한 뒤 내부 ES 또는 Oracle과 LLM 주소를 설정하면 됩니다.
 실행 시 인터넷 설치·모델 다운로드 없이 내부 Chat Completions 서버를 사용합니다.
 LLM 서버와 모델 가중치는 별도로 준비합니다.
+
+**[Oracle SQL 연결 안내](docs/ORACLE.md)**: `0.3.0`부터 Oracle 테이블·뷰 조회를 선택할 수 있습니다.
+예시 설정, 컬럼 매핑, 인증 파일, 시간대, 중복·실패 처리와 실제 DB 검증 절차를 제공합니다.
+Oracle Client 설치 없이 사용하며, 실제 DB 연결은 접속 정보가 준비된 뒤 확인해야 합니다.
 
 ## 인터넷 연결 환경에서 가장 빠르게 시작하기
 

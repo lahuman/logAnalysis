@@ -1,0 +1,213 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "logAnalysis · 오류 한 건의 처리",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "처리 단계"
+        },
+        "database": {
+          "label": "리포트"
+        },
+        "external": {
+          "label": "담당자"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "normal",
+      "label": "수집·소스 확인"
+    },
+    {
+      "id": "analysis",
+      "label": "분석·리포트"
+    },
+    {
+      "id": "exceptions",
+      "label": "분기·복구",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "read-event",
+    "register-parse",
+    "resolve-source",
+    "obtain-analysis",
+    "write-report",
+    "review-result"
+  ],
+  "nodes": [
+    {
+      "id": "read-event",
+      "lane": "normal",
+      "col": 0,
+      "type": "backend",
+      "label": "오류 조회",
+      "sublabel": "시간 구간 고정",
+      "width": 132,
+      "height": 76
+    },
+    {
+      "id": "register-parse",
+      "lane": "normal",
+      "col": 1,
+      "type": "backend",
+      "label": "중복 판별·파싱",
+      "sublabel": "수집원 + ID",
+      "width": 132,
+      "height": 76
+    },
+    {
+      "id": "resolve-source",
+      "lane": "normal",
+      "col": 2,
+      "type": "backend",
+      "label": "Git 소스 확인",
+      "sublabel": "commit / ref",
+      "width": 132,
+      "height": 76
+    },
+    {
+      "id": "obtain-analysis",
+      "lane": "analysis",
+      "col": 3,
+      "type": "backend",
+      "label": "캐시 / LLM 분석",
+      "sublabel": "정제 · 근거 검증",
+      "width": 132,
+      "height": 76
+    },
+    {
+      "id": "write-report",
+      "lane": "analysis",
+      "col": 4,
+      "type": "database",
+      "label": "새 리포트 저장",
+      "sublabel": "COMPLETED",
+      "width": 132,
+      "height": 76
+    },
+    {
+      "id": "review-result",
+      "lane": "analysis",
+      "col": 5,
+      "type": "external",
+      "label": "담당자 검토",
+      "sublabel": "수정·배포 결정",
+      "width": 132,
+      "height": 76
+    },
+    {
+      "id": "skip-terminal",
+      "lane": "exceptions",
+      "col": 1,
+      "type": "backend",
+      "label": "완료 건 건너뜀",
+      "sublabel": "분석·생성 생략",
+      "width": 132,
+      "height": 76
+    },
+    {
+      "id": "no-source",
+      "lane": "exceptions",
+      "col": 2,
+      "type": "database",
+      "label": "소스 없음 리포트",
+      "sublabel": "NO_SOURCE",
+      "width": 132,
+      "height": 76
+    },
+    {
+      "id": "wait-retry",
+      "lane": "exceptions",
+      "col": 3,
+      "type": "backend",
+      "label": "재시도 대기",
+      "sublabel": "RETRY_WAIT",
+      "width": 132,
+      "height": 76
+    }
+  ],
+  "edges": [
+    {
+      "id": "read-event-to-register-parse",
+      "from": "read-event",
+      "to": "register-parse",
+      "label": "조회 행",
+      "role": "main"
+    },
+    {
+      "id": "register-parse-to-resolve-source",
+      "from": "register-parse",
+      "to": "resolve-source",
+      "label": "새 오류",
+      "role": "main"
+    },
+    {
+      "id": "resolve-source-to-obtain-analysis",
+      "from": "resolve-source",
+      "to": "obtain-analysis",
+      "label": "소스 확보",
+      "role": "main"
+    },
+    {
+      "id": "obtain-analysis-to-write-report",
+      "from": "obtain-analysis",
+      "to": "write-report",
+      "label": "분석 결과",
+      "role": "main"
+    },
+    {
+      "id": "write-report-to-review-result",
+      "from": "write-report",
+      "to": "review-result",
+      "label": "리포트",
+      "role": "main"
+    },
+    {
+      "id": "register-parse-to-skip-terminal",
+      "from": "register-parse",
+      "to": "skip-terminal",
+      "label": "이미 완료",
+      "role": "branch"
+    },
+    {
+      "id": "resolve-source-to-no-source",
+      "from": "resolve-source",
+      "to": "no-source",
+      "label": "소스 없음",
+      "role": "branch"
+    },
+    {
+      "id": "obtain-analysis-to-wait-retry",
+      "from": "obtain-analysis",
+      "to": "wait-retry",
+      "label": "재시도 가능 오류",
+      "role": "error",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "재발은 새 이벤트",
+      "items": [
+        "새 ID이면 새 리포트를 만들고 기존 리포트를 갱신하지 않습니다.",
+        "fingerprint·commit·모델·프롬프트·분석기 키가 같으면 캐시를 재사용합니다."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "오류 처리와 배치 완료는 별개",
+      "items": [
+        "다음 배치는 기한이 된 재시도를 먼저 처리합니다. 최대 횟수 초과 등은 영구 실패입니다.",
+        "전체 페이지를 읽은 경우 체크포인트 저장; 조회 실패·중단 때는 진행하지 않습니다."
+      ]
+    }
+  ]
+}

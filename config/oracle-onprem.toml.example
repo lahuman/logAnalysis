@@ -1,0 +1,65 @@
+# 전체 배치 설정. ES 대신 Oracle 로그 테이블 또는 조회용 뷰를 사용합니다.
+[run]
+lock_file = "data/run.lock"
+batch_size = 500
+max_concurrency = 2
+initial_lookback_minutes = 60
+ingestion_delay_seconds = 60
+overlap_minutes = 5
+
+[error_source]
+type = "oracle"
+name = "oracle-production-logs"
+dsn = "tcp://oracle.internal:1521/LOGPDB"
+table = "APP_ERROR_LOG"
+timestamp_type = "timestamp"
+# TIMESTAMP/DATE에 저장된 벽시계 시각 기준. UTC 저장이면 +00:00으로 바꿉니다.
+timestamp_timezone = "+09:00"
+request_timeout_seconds = 30
+username_secret = "ORACLE_USERNAME"
+password_secret = "ORACLE_PASSWORD"
+# TCPS 사용 시 서버 설정에 따라 PEM wallet 경로·암호 파일을 준비합니다.
+# wallet_location = "config/oracle-wallet"
+# wallet_password_secret = "ORACLE_WALLET_PASSWORD"
+
+[error_source.columns]
+event_id = "EVENT_ID"
+occurred_at = "OCCURRED_AT"
+service = "SERVICE_NAME"
+severity = "LOG_LEVEL"
+message = "ERROR_MESSAGE"
+stack_trace = "STACK_TRACE"
+# 선택 컬럼: 실제 테이블에 있는 컬럼만 지정합니다. 없으면 생략합니다.
+# error_type = "ERROR_TYPE"
+# environment = "ENVIRONMENT"
+# version = "SERVICE_VERSION"
+# git_commit = "GIT_COMMIT"
+# trace_id = "TRACE_ID"
+# stack_trace 컬럼 없이 message에 전체 trace가 있으면 stack_trace = ""로 설정합니다.
+
+[analysis]
+source_context_lines = 75
+
+[services.order_api]
+repository = "repos/order-api.git"
+branch = "main"
+source_roots = ["src/main/java"]
+application_packages = ["com.example.order"]
+
+[openai]
+provider = "onprem"
+base_url = "https://llm.internal:8000/v1"
+model = "replace-with-internal-model-id"
+tls_ca = "config/certs/internal-ca.pem"
+auth_required = true
+api_key_secret = "LLM_API_KEY"
+structured_output = "json_schema"
+timeout_seconds = 120
+max_output_tokens = 4096
+
+[state]
+path = "data/state.db"
+
+[report]
+directory = "data/reports"
+retention_days = 30

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "workflow",
+  "input": "E:\\03.DEV\\logAnalysis\\docs\\diagrams\\offline-install.workflow.json",
+  "output": "E:\\03.DEV\\logAnalysis\\docs\\diagrams\\offline-install.html",
+  "specification": {
+    "sha256": "4a60806606c9aafeb9b8c4952900f8bd64403649b4a790a086cbb5067e3d69b5",
+    "bytes": 4485
+  },
+  "artifact": {
+    "sha256": "b0f6bb788124a9f6cae187eed514d9f82d332859611da364dcdfd38cfc069442",
+    "bytes": 711641
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

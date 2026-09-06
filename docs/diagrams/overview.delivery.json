@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\03.DEV\\logAnalysis\\docs\\diagrams\\overview.architecture.json",
+  "output": "E:\\03.DEV\\logAnalysis\\docs\\diagrams\\overview.html",
+  "specification": {
+    "sha256": "4d3d413f8846bb086d617a5073828dd08e817b27dcc2ad9fe28bce646c988cd4",
+    "bytes": 5469
+  },
+  "artifact": {
+    "sha256": "5649a323c7478958bbddfd5c72b427ec734e8583fc57dd763d10c0a15608ef23",
+    "bytes": 714722
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

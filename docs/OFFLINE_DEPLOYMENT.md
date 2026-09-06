@@ -5,29 +5,29 @@ Python 3.11.8, Python 의존성, 로컬 소스 조회용 Git을 포함하므로 
 `pip install`, `dnf install`, 가상환경 생성, 컨테이너 실행이 필요하지 않습니다.
 일반 사용자 권한으로 압축을 풀고 실행합니다.
 
-LLM 제품과 모델은 내부 서버가 선정된 후 설정합니다. 분석기는 내부 Elasticsearch와
+LLM 제품과 모델은 내부 서버가 선정된 후 설정합니다. 분석기는 내부 Elasticsearch 또는 Oracle과
 OpenAI 호환 **Chat Completions API**에 연결합니다. LLM GPU 서버·모델 가중치와
-Elasticsearch 자체는 별도로 준비하는 서버 구성요소입니다.
+Elasticsearch/Oracle 자체는 별도로 준비하는 서버 구성요소입니다.
 
 ## 1. 압축 해제와 실행 점검
 
 반입할 파일 두 개:
 
-- `log-analyzer-0.2.0-rhel9-x86_64-python3.11.8.tar.gz`
-- `log-analyzer-0.2.0-rhel9-x86_64-python3.11.8.tar.gz.sha256`
+- `log-analyzer-0.3.0-rhel9-x86_64-python3.11.8.tar.gz`
+- `log-analyzer-0.3.0-rhel9-x86_64-python3.11.8.tar.gz.sha256`
 
 쓰기·실행이 가능한 디렉터리에서 실행합니다. 아래 경로는 예시이며 다른 위치에 풀어도 됩니다.
 
 ```bash
-sha256sum -c log-analyzer-0.2.0-rhel9-x86_64-python3.11.8.tar.gz.sha256
-tar -xzf log-analyzer-0.2.0-rhel9-x86_64-python3.11.8.tar.gz
-cd log-analyzer-0.2.0
+sha256sum -c log-analyzer-0.3.0-rhel9-x86_64-python3.11.8.tar.gz.sha256
+tar -xzf log-analyzer-0.3.0-rhel9-x86_64-python3.11.8.tar.gz
+cd log-analyzer-0.3.0
 ./log-analyzer doctor
 ```
 
 `offline_doctor_succeeded`가 나오면 Python 버전, 필수 라이브러리, Git, SQLite,
 파일 쓰기·잠금, 배포 파일 체크섬 검사가 통과한 것입니다. **외부/내부 네트워크 모두
-사용하지 않는 검사**이므로 LLM이나 ES 설정 전에도 실행할 수 있습니다.
+사용하지 않는 검사**이므로 LLM이나 ES/Oracle 설정 전에도 실행할 수 있습니다.
 `manifest.json`에는 파일 체크섬, Python 배포 출처, 의존성 버전·다운로드 URL이 들어 있습니다.
 
 서버에 Python 3.11.8이 이미 설치되어 있어도 기본값은 동봉된 런타임입니다.
@@ -41,7 +41,9 @@ LOG_ANALYZER_PYTHON=/usr/local/bin/python3.11 ./log-analyzer doctor
 ## 2. 내부 주소와 소스 설정
 
 `config/config.toml`을 편집합니다. 처음 반입한 파일에는 설명을 위한 예시 값이 들어 있습니다.
-실제 연결에는 아래 정보가 필요합니다.
+Oracle을 사용하려면 `config/oracle-onprem.toml.example`을 `config/config.toml`로 복사하고
+[Oracle 연결 안내](ORACLE.md)의 DSN·컬럼·시간대·인증을 설정합니다. 아래 ES 항목은
+ES를 선택한 경우에만 필요합니다.
 
 | 설정 | 입력할 값 |
 |---|---|
@@ -107,7 +109,7 @@ unset LLM_KEY
 ```
 
 ES는 같은 디렉터리에 `ES_API_KEY`를 넣거나 `ES_USERNAME`, `ES_PASSWORD` 파일을
-함께 넣습니다. 환경 변수에 같은 이름이 있으면 파일보다 우선합니다.
+함께 넣습니다. Oracle은 `ORACLE_USERNAME`, `ORACLE_PASSWORD` 파일을 함께 넣습니다. 환경 변수에 같은 이름이 있으면 파일보다 우선합니다.
 키·CA·운영 설정·운영 로그·실제 Git 저장소는 기본 배포본에 포함하지 않습니다.
 
 소스는 **커밋 이력을 포함한 완전한 Git 저장소**를 별도로 반입합니다. 담당자가 인터넷망이나
@@ -131,8 +133,8 @@ partial/shallow clone은 필요한 커밋을 누락할 수 있으므로 사용�
 | `doctor` | Python·Git·라이브러리·파일 무결성·SQLite·잠금 | 없음 |
 | `check-config` | 설정 형식, onprem 선택, 모델 예시 값 교체 | 없음 |
 | `smoke` | 합성 Java 오류 한 건을 분석하고 `data/smoke-reports/`에 저장 | 설정된 내부 LLM만 |
-| `healthcheck` | ES·Git·SQLite와 LLM 모델 목록 확인; 추론은 하지 않음 | 내부 ES·LLM |
-| `run` | 실제 로그 조회부터 분석·리포트 저장까지 한 번 실행 | 내부 ES·LLM |
+| `healthcheck` | ES/Oracle·Git·SQLite와 LLM 모델 목록 확인; 추론은 하지 않음 | 내부 ES/Oracle·LLM |
+| `run` | 실제 로그 조회부터 분석·리포트 저장까지 한 번 실행 | 내부 ES/Oracle·LLM |
 
 `smoke` 성공은 구조화 응답과 근거·수정안·검증 절차를 실제로 받았다는 의미입니다.
 `healthcheck`에서 모델 목록이 조회돼도 추론 권한까지 보장되지는 않습니다.
@@ -153,7 +155,7 @@ partial/shallow clone은 필요한 커밋을 누락할 수 있으므로 사용�
 cron을 사용한다면 실행 계정의 crontab에 다음과 같이 등록합니다. 경로에 공백이 없는 예입니다.
 
 ```cron
-*/10 * * * * /srv/log-analyzer-0.2.0/log-analyzer run >> /srv/log-analyzer-0.2.0/data/batch.log 2>&1
+*/10 * * * * /srv/log-analyzer-0.3.0/log-analyzer run >> /srv/log-analyzer-0.3.0/data/batch.log 2>&1
 ```
 
 실행이 겹치면 파일 잠금으로 다음 실행을 건너뜁니다. `batch.log`는 조직의 logrotate 정책으로 관리합니다.
@@ -167,10 +169,10 @@ SQLite는 배치가 멈춘 상태에서 관련 DB/WAL/SHM 파일을 함께 보�
 
 ## 통신 범위와 LLM 호환성
 
-분석 시 설정된 내부 ES와 LLM만 사용합니다. 실행 중 패키지 설치·모델 다운로드·Git fetch·
+분석 시 설정된 내부 ES 또는 Oracle과 LLM만 사용합니다. 실행 중 패키지 설치·모델 다운로드·Git fetch·
 클라우드 LLM 대체 호출은 하지 않습니다. 런처는 HTTP 프록시 환경 변수를 제거하며,
 onprem LLM 클라이언트도 환경 변수 프록시를 사용하지 않습니다.
-내부 DNS와 CA를 설정하고, 서버의 송신 방화벽에서는 승인된 내부 ES·LLM·DNS만 허용하세요.
+내부 DNS와 CA를 설정하고, 서버의 송신 방화벽에서는 승인된 내부 ES/Oracle·LLM·DNS만 허용하세요.
 애플리케이션 설정만으로 임의의 DNS 이름이 실제 내부 주소인지 보장하지는 않습니다.
 
 서버는 `/v1/models`와 비스트리밍 `/v1/chat/completions`, JSON 구조화 출력을 제공해야 합니다.
@@ -214,7 +216,7 @@ podman run --rm -v "$PWD:/source:Z" log-analyzer-offline-builder
 빌더는 소스·템플릿·문서·예시 설정만 선택해 담으며 로컬 키나 운영 데이터는 복사하지 않습니다.
 
 Python은 [python-build-standalone](https://gregoryszorc.com/docs/python-build-standalone/main/running.html)의
-3.11.8/20240224 배포판을 체크섬 검증 후 포함합니다. Linux wheel 24개는
+3.11.8/20240224 배포판을 체크섬 검증 후 포함합니다. Linux wheel 28개는
 `deploy/offline/wheels.lock.json`에 버전·URL·SHA-256으로 고정되어 있습니다.
 Git은 로컬 명령에 필요한 부분을 RHEL 9 호환 컨테이너에서 빌드하며 zlib를 정적으로 연결합니다.
 런타임 glibc는 RHEL 9의 기본 glibc 2.34 이상을 사용합니다.
@@ -226,7 +228,7 @@ Python·wheel의 동봉 라이선스도 보존합니다.
 `openssl`, Python 3.11이 필요합니다. 분석 대상 서버의 설치 요구사항은 아닙니다.
 
 ```bash
-sudo unshare --net sh -c 'ip link set lo up; runuser -u nobody -- python3.11 deploy/offline/verify.py dist/offline/log-analyzer-0.2.0-rhel9-x86_64-python3.11.8.tar.gz'
+sudo unshare --net sh -c 'ip link set lo up; runuser -u nobody -- python3.11 deploy/offline/verify.py dist/offline/log-analyzer-0.3.0-rhel9-x86_64-python3.11.8.tar.gz'
 ```
 
 `nobody` 계정이 저장소와 압축파일을 읽을 수 있어야 합니다. 검증기는 쓰기 가능한 임시

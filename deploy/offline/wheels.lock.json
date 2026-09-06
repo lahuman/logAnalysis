@@ -49,6 +49,20 @@
     "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775"
   },
   {
+    "name": "cffi",
+    "version": "2.1.1",
+    "filename": "cffi-2.1.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+    "url": "https://files.pythonhosted.org/packages/f7/a4/4399daaf8f7dfee9d7c3327fdb0426ee041cc63edc358b93911ceb2bfc7a/cffi-2.1.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+    "sha256": "34e261f78cb6ceaaa36f42f2613f4380d94d9c759a9c73c769ee6e0247364632"
+  },
+  {
+    "name": "cryptography",
+    "version": "50.0.1",
+    "filename": "cryptography-50.0.1-cp311-abi3-manylinux_2_34_x86_64.whl",
+    "url": "https://files.pythonhosted.org/packages/85/66/6ccca4722987ddedaa7fc9c3f4708af7431f5535666c174350830888c6b7/cryptography-50.0.1-cp311-abi3-manylinux_2_34_x86_64.whl",
+    "sha256": "51afcfceb15597cf2635068e4ac9a56b2abde622edde17f37d85fd7b5306497a"
+  },
+  {
     "name": "elastic_transport",
     "version": "8.19.0",
     "filename": "elastic_transport-8.19.0-py3-none-any.whl",
@@ -105,11 +119,25 @@
     "sha256": "439cbebd499f92e9aa6793016a8acaa161dfa749ae86d20960189f5398a19144"
   },
   {
+    "name": "oracledb",
+    "version": "4.0.2",
+    "filename": "oracledb-4.0.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+    "url": "https://files.pythonhosted.org/packages/55/c3/f6e15a8d5d6a3442cfa00b12619eb6f2438fddbb93da0de6fae0020ecca7/oracledb-4.0.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+    "sha256": "33bcb765bf97056764c38481dc1dd959e4b61f3a240baacc645d7f06038ce225"
+  },
+  {
     "name": "propcache",
     "version": "0.5.2",
     "filename": "propcache-0.5.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
     "url": "https://files.pythonhosted.org/packages/27/1b/16ab7f2cf2041da2f60d156ba64c2484eadf9168075b4ff43c3ef60045af/propcache-0.5.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
     "sha256": "5aaa2b923c1944ac8febd6609cb373540a5563e7cbcb0fd770f75dace2eb817b"
+  },
+  {
+    "name": "pycparser",
+    "version": "3.0",
+    "filename": "pycparser-3.0-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl",
+    "sha256": "b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992"
   },
   {
     "name": "pydantic",

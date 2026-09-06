@@ -111,6 +111,8 @@ def build(output: Path, cache: Path) -> Path:
         for document in (REPO / "docs").glob("*.md"):
             shutil.copy2(document, root / "docs" / document.name)
         shutil.copytree(REPO / "docs/examples", root / "docs/examples")
+        if (REPO / "docs/diagrams").is_dir():
+            shutil.copytree(REPO / "docs/diagrams", root / "docs/diagrams")
         shutil.copy2(REPO / "README.md", root / "PROJECT_README.md")
         shutil.copy2(REPO / "SYSTEM_DESIGN.md", root / "SYSTEM_DESIGN.md")
         for example in (REPO / "config").glob("*.example"):

@@ -1,0 +1,91 @@
+{
+  "date": "2026-09-06",
+  "application_version": "0.3.0",
+  "branch": "codex/important-network",
+  "basis": "Current workspace including uncommitted Oracle adapter; not a published-commit source verification.",
+  "archify": {
+    "upstream": "https://github.com/tt-a1i/archify",
+    "revision": "d8e4daf2610d512821365f41b139d874b29efe81",
+    "version": "2.17.0-dev.1",
+    "template_patch": "archify-offline-fonts.patch",
+    "template_patch_sha256": "68364300c73242964f427f3b847083cff1cc8296ca783cc5998e245698783ef5",
+    "update_check_disabled": true
+  },
+  "diagrams": [
+    {
+      "diagram_type": "architecture",
+      "output": "overview.html",
+      "specification": "overview.architecture.json",
+      "specification_sha256": "4d3d413f8846bb086d617a5073828dd08e817b27dcc2ad9fe28bce646c988cd4",
+      "artifact_sha256": "5649a323c7478958bbddfd5c72b427ec734e8583fc57dd763d10c0a15608ef23",
+      "artifact_bytes": 714722,
+      "validation": "9/9 showcase, 0 errors, 0 warnings",
+      "browser_evidence": "passed",
+      "browser_receipt": "overview.visual-check.json",
+      "external_asset_references": [],
+      "visual_review": "passed",
+      "visual_review_scope": "Static READ view: Korean text, node fit, edges, labels, cards and vertical balance; full interactive/export behavior not assessed.",
+      "reviewed_images": [
+        {
+          "file": "overview.visual-check.1440x900.light.png",
+          "sha256": "c53860f2d7772460a415f4811d1de92fb07b787c00818873a71fcb665d92d47e"
+        },
+        {
+          "file": "overview.visual-check.2048x1320.dark.png",
+          "sha256": "d34d149f66d608bd123fc3c7d2406234451ad6e2c67d0f91e7ed1976c705c469"
+        }
+      ],
+      "correction_rounds": 1
+    },
+    {
+      "diagram_type": "workflow",
+      "output": "event-processing.html",
+      "specification": "event-processing.workflow.json",
+      "specification_sha256": "e70ca38d0028d651e205452fc5968a8cbc039cf0cafd112b606081494e46811b",
+      "artifact_sha256": "c90ca571719e1624f7b028e23117e5691ae0240da7bf267c081131382587cc0a",
+      "artifact_bytes": 713613,
+      "validation": "9/9 showcase, 0 errors, 0 warnings",
+      "browser_evidence": "passed",
+      "browser_receipt": "event-processing.visual-check.json",
+      "external_asset_references": [],
+      "visual_review": "passed",
+      "visual_review_scope": "Static READ view: Korean text, node fit, edges, labels, cards and vertical balance; full interactive/export behavior not assessed.",
+      "reviewed_images": [
+        {
+          "file": "event-processing.visual-check.1440x900.light.png",
+          "sha256": "b15d1b8eeeddb99c4faf9661ce4dbc55ae1cd570ba0abe308261ecd374bc2db0"
+        },
+        {
+          "file": "event-processing.visual-check.2048x1320.dark.png",
+          "sha256": "7d83f3ac30e8557c5b67cb973a03909ade36abed80b6a7e954b6a6fd9c89aa6f"
+        }
+      ],
+      "correction_rounds": 2
+    },
+    {
+      "diagram_type": "workflow",
+      "output": "offline-install.html",
+      "specification": "offline-install.workflow.json",
+      "specification_sha256": "4a60806606c9aafeb9b8c4952900f8bd64403649b4a790a086cbb5067e3d69b5",
+      "artifact_sha256": "b0f6bb788124a9f6cae187eed514d9f82d332859611da364dcdfd38cfc069442",
+      "artifact_bytes": 711641,
+      "validation": "9/9 showcase, 0 errors, 0 warnings",
+      "browser_evidence": "passed",
+      "browser_receipt": "offline-install.visual-check.json",
+      "external_asset_references": [],
+      "visual_review": "passed",
+      "visual_review_scope": "Static READ view: Korean text, node fit, edges, labels, cards and vertical balance; full interactive/export behavior not assessed.",
+      "reviewed_images": [
+        {
+          "file": "offline-install.visual-check.1440x900.light.png",
+          "sha256": "d3cd7391ea1d7e25336cade0fa1fa05a50c16fac4d3730b6de2645ce4f66bfa0"
+        },
+        {
+          "file": "offline-install.visual-check.2048x1320.dark.png",
+          "sha256": "4adbb1956e98519c4cd7d35e001d3f21f6cc333fe504b0dbd3d99062009bbb8e"
+        }
+      ],
+      "correction_rounds": 1
+    }
+  ]
+}

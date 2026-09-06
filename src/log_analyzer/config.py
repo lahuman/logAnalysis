@@ -21,6 +21,7 @@ _ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _JAVA_PACKAGE = re.compile(r"^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$")
 _GIT_REFERENCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 _MAX_CREDENTIAL_SIZE = 65_536
+_ORACLE_IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_$#]{0,127}$")
 
 
 class _ConfigModel(BaseModel):
@@ -88,6 +89,79 @@ class ErrorSourceConfig(_ConfigModel):
         if not self.verify_tls:
             raise ValueError("TLS certificate verification cannot be disabled")
         return self
+
+
+class OracleColumnsConfig(_ConfigModel):
+    event_id: str = "EVENT_ID"
+    occurred_at: str = "OCCURRED_AT"
+    service: str = "SERVICE_NAME"
+    severity: str = "LOG_LEVEL"
+    message: str = "ERROR_MESSAGE"
+    stack_trace: str | None = "STACK_TRACE"
+    error_type: str | None = None
+    environment: str | None = None
+    version: str | None = None
+    git_commit: str | None = None
+    trace_id: str | None = None
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def validate_column(cls, value: Any) -> str | None:
+        if value is None or value == "":
+            return None
+        if not isinstance(value, str) or not _ORACLE_IDENTIFIER.fullmatch(value):
+            raise ValueError("must be an unquoted Oracle column identifier")
+        return value
+
+
+class OracleSourceConfig(_ConfigModel):
+    type: Literal["oracle"]
+    name: str = "oracle-logs"
+    dsn: str
+    table: str
+    columns: OracleColumnsConfig = OracleColumnsConfig()
+    timestamp_type: Literal["timestamp", "timestamp_tz"] = "timestamp"
+    timestamp_timezone: str = "+00:00"
+    request_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    username_secret: str = "ORACLE_USERNAME"
+    password_secret: str = "ORACLE_PASSWORD"
+    wallet_location: Path | None = None
+    wallet_password_secret: str = "ORACLE_WALLET_PASSWORD"
+
+    @field_validator("name", "dsn")
+    @classmethod
+    def validate_text(cls, value: str, info: Any) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be empty")
+        if info.field_name == "dsn" and (
+            "@" in value or re.search(r"(?i)(?:password|access_token|user)\s*=", value)
+            or value.lower().startswith("config-")
+        ):
+            raise ValueError("use a local Oracle DSN without embedded credentials or cloud configuration")
+        return value
+
+    @field_validator("table")
+    @classmethod
+    def validate_table(cls, value: str) -> str:
+        parts = value.split(".")
+        if len(parts) not in {1, 2} or not all(_ORACLE_IDENTIFIER.fullmatch(part) for part in parts):
+            raise ValueError("must be an unquoted table/view name, optionally qualified by schema")
+        return value
+
+    @field_validator("timestamp_timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        if not re.fullmatch(r"[+-](?:0\d|1[0-4]):[0-5]\d", value) or (value[1:3] == "14" and value[4:] != "00"):
+            raise ValueError("must be a fixed UTC offset between -14:00 and +14:00")
+        return value
+
+    @field_validator("username_secret", "password_secret", "wallet_password_secret")
+    @classmethod
+    def validate_secret(cls, value: str) -> str:
+        if not _ENV_NAME.fullmatch(value):
+            raise ValueError("must be an uppercase environment variable name")
+        return value
 
 
 class AnalysisConfig(_ConfigModel):
@@ -242,7 +316,7 @@ class ReportConfig(_ConfigModel):
 
 class AppConfig(_ConfigModel):
     run: RunConfig = RunConfig()
-    error_source: ErrorSourceConfig
+    error_source: ErrorSourceConfig | OracleSourceConfig
     analysis: AnalysisConfig = AnalysisConfig()
     services: tuple[ServiceConfig, ...]
     openai: OpenAIConfig

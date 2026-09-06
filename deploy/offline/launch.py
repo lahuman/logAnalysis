@@ -42,6 +42,7 @@ def doctor() -> None:
     import elasticsearch
     import httpx
     import pydantic_core
+    import oracledb
     import sqlite3
     import ssl
     import fcntl

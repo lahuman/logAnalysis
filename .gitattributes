@@ -1,2 +1,5 @@
 deploy/offline/log-analyzer text eol=lf
 *.sh text eol=lf
+docs/diagrams/*.json -text
+docs/diagrams/*.html -text
+docs/diagrams/*.patch -text

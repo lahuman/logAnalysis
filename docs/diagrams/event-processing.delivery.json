@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "workflow",
+  "input": "E:\\03.DEV\\logAnalysis\\docs\\diagrams\\event-processing.workflow.json",
+  "output": "E:\\03.DEV\\logAnalysis\\docs\\diagrams\\event-processing.html",
+  "specification": {
+    "sha256": "e70ca38d0028d651e205452fc5968a8cbc039cf0cafd112b606081494e46811b",
+    "bytes": 5176
+  },
+  "artifact": {
+    "sha256": "c90ca571719e1624f7b028e23117e5691ae0240da7bf267c081131382587cc0a",
+    "bytes": 713613
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}
