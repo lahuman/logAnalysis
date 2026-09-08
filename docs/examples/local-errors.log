@@ -1,0 +1,14 @@
+2026-09-07 09:00:00.000 INFO [main] com.example.order.OrderService - Application started
+2026-09-07 09:01:00.123 ERROR [worker-1] com.example.order.OrderService - Failed to submit order
+java.lang.IllegalStateException: bad order
+	at com.example.order.OrderService.submit(OrderService.java:42)
+Caused by: java.lang.NullPointerException: customer is null
+	at com.example.order.OrderService.validate(OrderService.java:30)
+	... 1 more
+2026-09-07 09:02:00.123 ERROR [worker-2] com.example.order.OrderService - Failed to submit order
+java.lang.IllegalStateException: bad order
+	at com.example.order.OrderService.submit(OrderService.java:42)
+Caused by: java.lang.NullPointerException: customer is null
+	at com.example.order.OrderService.validate(OrderService.java:30)
+	... 1 more
+2026-09-07 09:03:00.000 INFO [main] com.example.order.OrderService - Batch finished

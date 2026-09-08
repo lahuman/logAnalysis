@@ -40,7 +40,8 @@ class FakeLock:
 
 def minimal_config() -> SimpleNamespace:
     return SimpleNamespace(
-        run=SimpleNamespace(lock_file=Path("/run/log-analyzer/run.lock"))
+        run=SimpleNamespace(lock_file=Path("/run/log-analyzer/run.lock")),
+        error_source=SimpleNamespace(name="logs"),
     )
 
 
@@ -103,6 +104,11 @@ class CliMainTests(unittest.TestCase):
         status, record = self.invoke(infrastructure)
         self.assertEqual(status, cli.EXIT_INFRASTRUCTURE)
         self.assertEqual(record["event"], "infrastructure_failure")
+        self.assertEqual(record["error_message"], "offline")
+        self.assertEqual(record["error_location"]["function"], "infrastructure")
+        self.assertTrue(record["error_location"]["file"].endswith("test_cli.py"))
+        self.assertGreater(record["error_location"]["line"], 0)
+        self.assertEqual(record["command"], "run")
         self.assertTrue(FakeLock.instances[0].released)
 
         FakeLock.instances.clear()
@@ -113,10 +119,73 @@ class CliMainTests(unittest.TestCase):
         status, record = self.invoke(internal)
         self.assertEqual(status, cli.EXIT_INTERNAL)
         self.assertEqual(record["event"], "internal_failure")
+        self.assertEqual(record["error_message"], "bug")
+        self.assertEqual(record["error_location"]["function"], "internal")
         self.assertTrue(FakeLock.instances[0].released)
+
+    def test_nested_infrastructure_failure_keeps_root_cause(self) -> None:
+        async def fetch():
+            raise ConnectionError("connection refused password=do-not-print")
+
+        async def execute(command, config):
+            try:
+                await fetch()
+            except ConnectionError as exc:
+                raise PipelineInfrastructureError("error source fetch failed") from exc
+
+        status, record = self.invoke(execute)
+        self.assertEqual(cli.EXIT_INFRASTRUCTURE, status)
+        cause = record["exception_chain"][-1]
+        self.assertEqual("ConnectionError", cause["error_type"])
+        self.assertEqual("fetch", cause["location"]["function"])
+        self.assertIn("connection refused", cause["message"])
+        self.assertNotIn("do-not-print", json.dumps(record))
+
+    def test_lock_failure_has_location_and_reason(self) -> None:
+        FakeLock.acquire_error = PermissionError("lock directory is read-only")
+        status, record = self.invoke(AsyncMock())
+        self.assertEqual(cli.EXIT_INFRASTRUCTURE, status)
+        self.assertEqual("run_lock_unavailable", record["event"])
+        self.assertEqual("acquire", record["error_location"]["function"])
+        self.assertIn("read-only", record["error_message"])
+
+    def test_real_invalid_config_identifies_field_without_input_value(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "invalid.toml"
+            path.write_text('[openai]\nmodel="ok"\ntimeout_seconds="private-input-value"\n', encoding="utf-8")
+            output = io.StringIO()
+            with contextlib.redirect_stderr(output):
+                status = cli.main(["run", "--config", str(path)])
+        self.assertEqual(cli.EXIT_CONFIG, status)
+        record = json.loads(output.getvalue())
+        validation = record["exception_chain"][-1]["validation_errors"]
+        self.assertIn("openai.timeout_seconds", [item["field"] for item in validation])
+        self.assertNotIn("private-input-value", output.getvalue())
 
 
 class CliExecutionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cleanup_failure_is_logged_without_hiding_original_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.config(Path(directory))
+            state = Mock()
+            source = Mock(close=AsyncMock(side_effect=OSError("close failed")))
+            output = io.StringIO()
+            with (
+                patch.object(cli, "require_secret", return_value="test-key"),
+                patch.object(cli, "read_secret", return_value=None),
+                patch.object(cli, "SQLiteStateStore", return_value=state),
+                patch.object(cli, "ElasticsearchErrorSource", return_value=source),
+                patch.object(cli, "GitSourceResolver", side_effect=RuntimeError("initial failure")),
+                contextlib.redirect_stderr(output),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "initial failure"):
+                    await cli._execute("run", config)
+            state.close.assert_called_once_with()
+            record = json.loads(output.getvalue())
+            self.assertEqual("resource_cleanup_failed", record["event"])
+            self.assertEqual("error_source", record["resource"])
+            self.assertEqual("close failed", record["error_message"])
+
     async def test_run_selects_onprem_without_requiring_cloud_credentials(self) -> None:
         from log_analyzer.config import OpenAIConfig
         with tempfile.TemporaryDirectory() as directory:

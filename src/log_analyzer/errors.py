@@ -13,6 +13,13 @@ class LogAnalyzerError(Exception):
 class ConfigError(LogAnalyzerError):
     """Raised when configuration cannot be loaded or validated."""
 
+    def __init__(self, message: str, *, diagnostic_message: str | None = None) -> None:
+        super().__init__(message)
+        # The original message can contain a full Pydantic input or TOML value.
+        self.diagnostic_message = diagnostic_message or (
+            "Configuration is invalid; check configuration fields and required credentials."
+        )
+
 
 class StorageError(LogAnalyzerError):
     """Raised when persistent state cannot be read or written."""

@@ -1,0 +1,49 @@
+# 로컬 텍스트 로그와 Java stack trace를 읽는 전체 배치 설정입니다.
+[run]
+lock_file = "data/run.lock"
+batch_size = 500
+max_concurrency = 2
+ingestion_delay_seconds = 0
+severities = ["ERROR", "FATAL"]
+
+[error_source]
+type = "file"
+name = "local-order-logs"
+path = "data/input/application.log"
+service = "order_api"
+encoding = "utf-8"
+timestamp_timezone = "+09:00"
+# false: 파일 전체를 읽어 과거 로그도 분석. true: 기존 배치 시간 범위만 조회.
+filter_time_window = false
+max_file_bytes = 268435456
+max_record_bytes = 1048576
+# 기본 헤더: 2026-09-07 09:00:00.123 ERROR [thread] logger - message
+# 사용자 정의 정규식은 docs/LOCAL_FILES.md를 참고하세요.
+
+[analysis]
+source_context_lines = 75
+
+[services.order_api]
+repository = "repos/order-api.git"
+branch = "main"
+source_roots = ["src/main/java"]
+application_packages = ["com.example.order"]
+
+[openai]
+provider = "onprem"
+base_url = "https://llm.internal:8000/v1"
+model = "replace-with-internal-model-id"
+tls_ca = "config/certs/internal-ca.pem"
+auth_required = true
+allow_http = false
+api_key_secret = "LLM_API_KEY"
+structured_output = "json_schema"
+timeout_seconds = 120
+max_output_tokens = 4096
+
+[state]
+path = "data/state.db"
+
+[report]
+directory = "data/reports"
+retention_days = 30

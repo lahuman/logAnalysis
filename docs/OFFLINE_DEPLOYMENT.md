@@ -1,9 +1,13 @@
 # 중요망에서 압축을 풀고 사용하기
 
-이 배포본은 **RHEL 9 x86_64 / Python 3.11.8**을 기준으로 합니다.
+**0.5.0: RHEL 8.2 / glibc 2.28 호환 및 소스 직접 수정 실행** — [폐쇄망 소스 수정 안내](OFFLINE_DEVELOPMENT.md).
+
+이 배포본은 **RHEL 8.2 x86_64 / Python 3.11.8**을 기준으로 합니다.
 Python 3.11.8, Python 의존성, 로컬 소스 조회용 Git을 포함하므로 대상 서버에서
 `pip install`, `dnf install`, 가상환경 생성, 컨테이너 실행이 필요하지 않습니다.
 일반 사용자 권한으로 압축을 풀고 실행합니다.
+
+0.5.0의 기본 로그 입력은 [로컬 텍스트 파일](LOCAL_FILES.md)입니다. Oracle·ES 입력도 선택할 수 있습니다.
 
 LLM 제품과 모델은 내부 서버가 선정된 후 설정합니다. 분석기는 내부 Elasticsearch 또는 Oracle과
 OpenAI 호환 **Chat Completions API**에 연결합니다. LLM GPU 서버·모델 가중치와
@@ -13,22 +17,23 @@ Elasticsearch/Oracle 자체는 별도로 준비하는 서버 구성요소입니�
 
 반입할 파일 두 개:
 
-- `log-analyzer-0.3.0-rhel9-x86_64-python3.11.8.tar.gz`
-- `log-analyzer-0.3.0-rhel9-x86_64-python3.11.8.tar.gz.sha256`
+- `log-analyzer-0.5.0-rhel8-x86_64-python3.11.8.tar.gz`
+- `log-analyzer-0.5.0-rhel8-x86_64-python3.11.8.tar.gz.sha256`
 
 쓰기·실행이 가능한 디렉터리에서 실행합니다. 아래 경로는 예시이며 다른 위치에 풀어도 됩니다.
 
 ```bash
-sha256sum -c log-analyzer-0.3.0-rhel9-x86_64-python3.11.8.tar.gz.sha256
-tar -xzf log-analyzer-0.3.0-rhel9-x86_64-python3.11.8.tar.gz
-cd log-analyzer-0.3.0
+sha256sum -c log-analyzer-0.5.0-rhel8-x86_64-python3.11.8.tar.gz.sha256
+tar -xzf log-analyzer-0.5.0-rhel8-x86_64-python3.11.8.tar.gz
+cd log-analyzer-0.5.0
 ./log-analyzer doctor
 ```
 
 `offline_doctor_succeeded`가 나오면 Python 버전, 필수 라이브러리, Git, SQLite,
-파일 쓰기·잠금, 배포 파일 체크섬 검사가 통과한 것입니다. **외부/내부 네트워크 모두
+파일 쓰기·잠금, 런타임·라이브러리 체크섬 및 수정 소스 문법 검사가 통과한 것입니다. **외부/내부 네트워크 모두
 사용하지 않는 검사**이므로 LLM이나 ES/Oracle 설정 전에도 실행할 수 있습니다.
-`manifest.json`에는 파일 체크섬, Python 배포 출처, 의존성 버전·다운로드 URL이 들어 있습니다.
+`src/`, `templates/`, 운영 설정은 직접 수정할 수 있습니다. [소스 수정 안내](OFFLINE_DEVELOPMENT.md)를 참고하세요.
+`manifest.json`에는 고정 파일 체크섬, Python 배포 출처, 의존성 버전·다운로드 URL이 들어 있습니다.
 
 서버에 Python 3.11.8이 이미 설치되어 있어도 기본값은 동봉된 런타임입니다.
 서버 Python을 사용하려면 정확히 3.11.8인 실행 파일을 지정합니다. 의존성은 계속
@@ -40,7 +45,9 @@ LOG_ANALYZER_PYTHON=/usr/local/bin/python3.11 ./log-analyzer doctor
 
 ## 2. 내부 주소와 소스 설정
 
-`config/config.toml`을 편집합니다. 처음 반입한 파일에는 설명을 위한 예시 값이 들어 있습니다.
+`config/config.toml`을 편집합니다. 기본값은 `file-onprem.toml.example`의 로컬 파일 입력입니다.
+[파일 입력 안내](LOCAL_FILES.md)에 따라 `data/input/application.log`에 완성된 로그를 복사하고
+서비스·Git·LLM을 설정합니다. ES를 선택하려면 `config/onprem.toml.example`을 복사합니다.
 Oracle을 사용하려면 `config/oracle-onprem.toml.example`을 `config/config.toml`로 복사하고
 [Oracle 연결 안내](ORACLE.md)의 DSN·컬럼·시간대·인증을 설정합니다. 아래 ES 항목은
 ES를 선택한 경우에만 필요합니다.
@@ -142,7 +149,8 @@ partial/shallow clone은 필요한 커밋을 누락할 수 있으므로 사용�
 실제 연결 대상은 설정한 내부 LLM입니다.
 
 실제 리포트는 `data/reports/`, 체크포인트·중복 제거·재시도 상태는 `data/state.db`에 저장합니다.
-같은 설정으로 `run`을 반복하면 저장된 체크포인트에서 이어갑니다.
+ES·Oracle은 같은 설정으로 `run`을 반복하면 저장된 체크포인트에서 이어갑니다.
+파일 기본 모드는 매번 파일 전체를 읽고 상태 DB의 이벤트 ID로 완료 기록을 건너뜁니다.
 처리한 이벤트의 재조회는 건너뛰고, 같은 오류가 새 이벤트로 재발하면 캐시를 재사용해
 이벤트별 리포트를 추가합니다. 기존 리포트가 자동 갱신되는 것은 아닙니다.
 발생 건수·시각의 의미는 [중복 오류와 재발 처리](DUPLICATE_ERRORS.md)를 참고하세요.
@@ -155,7 +163,7 @@ partial/shallow clone은 필요한 커밋을 누락할 수 있으므로 사용�
 cron을 사용한다면 실행 계정의 crontab에 다음과 같이 등록합니다. 경로에 공백이 없는 예입니다.
 
 ```cron
-*/10 * * * * /srv/log-analyzer-0.3.0/log-analyzer run >> /srv/log-analyzer-0.3.0/data/batch.log 2>&1
+*/10 * * * * /srv/log-analyzer-0.5.0/log-analyzer run >> /srv/log-analyzer-0.5.0/data/batch.log 2>&1
 ```
 
 실행이 겹치면 파일 잠금으로 다음 실행을 건너뜁니다. `batch.log`는 조직의 logrotate 정책으로 관리합니다.
@@ -218,17 +226,17 @@ podman run --rm -v "$PWD:/source:Z" log-analyzer-offline-builder
 Python은 [python-build-standalone](https://gregoryszorc.com/docs/python-build-standalone/main/running.html)의
 3.11.8/20240224 배포판을 체크섬 검증 후 포함합니다. Linux wheel 28개는
 `deploy/offline/wheels.lock.json`에 버전·URL·SHA-256으로 고정되어 있습니다.
-Git은 로컬 명령에 필요한 부분을 RHEL 9 호환 컨테이너에서 빌드하며 zlib를 정적으로 연결합니다.
-런타임 glibc는 RHEL 9의 기본 glibc 2.34 이상을 사용합니다.
+Git은 로컬 명령에 필요한 부분을 RHEL 8 호환 컨테이너에서 빌드하며 zlib를 정적으로 연결합니다.
+런타임 glibc는 2.28 이상을 사용합니다. 모든 ELF의 요구 GLIBC 버전을 빌드 시 검사합니다.
 Git·zlib 원본 소스와 라이선스, 빌드 명령을 압축파일의 `third-party/`에 포함합니다.
 Python·wheel의 동봉 라이선스도 보존합니다.
 
 일반 사용자 권한과 외부 통신이 차단된 공간에서 압축파일 자체를 재검증하려면,
 테스트 Linux 호스트에서 다음을 실행합니다. 테스트 호스트에는 `unshare`, `ip`,
-`openssl`, Python 3.11이 필요합니다. 분석 대상 서버의 설치 요구사항은 아닙니다.
+Python 3.11이 필요합니다. 인증서 생성에는 동봉한 cryptography를 사용합니다. 분석 대상 서버의 설치 요구사항은 아닙니다.
 
 ```bash
-sudo unshare --net sh -c 'ip link set lo up; runuser -u nobody -- python3.11 deploy/offline/verify.py dist/offline/log-analyzer-0.3.0-rhel9-x86_64-python3.11.8.tar.gz'
+sudo unshare --net sh -c 'ip link set lo up; runuser -u nobody -- python3.11 deploy/offline/verify.py dist/offline/log-analyzer-0.5.0-rhel8-x86_64-python3.11.8.tar.gz'
 ```
 
 `nobody` 계정이 저장소와 압축파일을 읽을 수 있어야 합니다. 검증기는 쓰기 가능한 임시

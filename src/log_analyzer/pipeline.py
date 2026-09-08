@@ -21,6 +21,7 @@ from .analysis.openai_responses import (
     RetryableAnalyzerError,
 )
 from .analysis.redact import RedactionError, SecretRedactor
+from .diagnostics import emit, error_summary
 from .fingerprint import make_fingerprint
 from .models import ErrorEvent, ErrorQuery, ParsedError, SourceContext
 from .parsers import GenericErrorParser, JavaErrorParser, parse_event
@@ -167,14 +168,16 @@ class AnalysisPipeline:
 
         try:
             self._state.healthcheck()
-            await self._source.healthcheck()
-            await asyncio.to_thread(self._source_resolver.healthcheck)
-        except SourceResolutionError as exc:
-            raise PipelineInfrastructureError("Git repository healthcheck failed") from exc
         except Exception as exc:
-            if isinstance(exc, PipelineInfrastructureError):
-                raise
-            raise PipelineInfrastructureError("dependency healthcheck failed") from exc
+            raise PipelineInfrastructureError("state database healthcheck failed") from exc
+        try:
+            await self._source.healthcheck()
+        except Exception as exc:
+            raise PipelineInfrastructureError("error source healthcheck failed") from exc
+        try:
+            await asyncio.to_thread(self._source_resolver.healthcheck)
+        except Exception as exc:
+            raise PipelineInfrastructureError("Git repository healthcheck failed") from exc
 
     async def run(self, *, stop_event: asyncio.Event | None = None) -> RunSummary:
         """Drain due retries, process one fixed source snapshot, then checkpoint it."""
@@ -303,6 +306,11 @@ class AnalysisPipeline:
             )
             if updated:
                 summary.permanent_failures += 1
+                emit(
+                    "error", "analysis_permanent_failure", source_name=job.source_name,
+                    event_id=job.event_id, service=job.service,
+                    reason="Source event unavailable while recovering interrupted work",
+                )
 
     async def _process_page(
         self,
@@ -368,8 +376,13 @@ class AnalysisPipeline:
                 return False
             try:
                 await self._process_event(event, summary, now)
-            except PipelineInfrastructureError:
-                stop.set()
+            except Exception as exc:
+                emit(
+                    "error", "event_processing_failed", error=exc, redactor=self._redactor,
+                    source_name=event.source_name, event_id=event.event_id, service=event.service,
+                )
+                if isinstance(exc, PipelineInfrastructureError):
+                    stop.set()
                 raise
             return True
 
@@ -386,8 +399,13 @@ class AnalysisPipeline:
             summary.retry_jobs_processed += 1
             try:
                 await self._process_retry(job, summary, now)
-            except PipelineInfrastructureError:
-                stop.set()
+            except Exception as exc:
+                emit(
+                    "error", "retry_processing_failed", error=exc, redactor=self._redactor,
+                    source_name=job.source_name, event_id=job.event_id, service=job.service,
+                )
+                if isinstance(exc, PipelineInfrastructureError):
+                    stop.set()
                 raise
             return True
 
@@ -640,7 +658,7 @@ class AnalysisPipeline:
                 status = self._state.mark_retry(
                     source_name,
                     event_id,
-                    _safe_error(exc, self._redactor),
+                    error_summary(exc, self._redactor),
                     request_json=request_json,
                     now=now,
                     max_attempts=5,
@@ -649,6 +667,12 @@ class AnalysisPipeline:
                     summary.retries_scheduled += 1
                 else:
                     summary.permanent_failures += 1
+                emit(
+                    "warning" if status is JobStatus.RETRY_WAIT else "error",
+                    "analysis_retry_scheduled" if status is JobStatus.RETRY_WAIT else "analysis_permanent_failure",
+                    error=exc, redactor=self._redactor, source_name=source_name,
+                    event_id=event_id, service=request.service, status=status.value,
+                )
                 return
             except (
                 PermanentAnalyzerError,
@@ -810,11 +834,15 @@ class AnalysisPipeline:
             source_name,
             event_id,
             JobStatus.PERMANENT_FAILURE,
-            error=_safe_error(error, self._redactor),
+            error=error_summary(error, self._redactor),
             now=now,
         ):
             raise PipelineInfrastructureError("failed analysis job disappeared")
         summary.permanent_failures += 1
+        emit(
+            "error", "analysis_permanent_failure", error=error, redactor=self._redactor,
+            source_name=source_name, event_id=event_id, status=JobStatus.PERMANENT_FAILURE.value,
+        )
 
     async def _apply_retention(self, summary: RunSummary, now: datetime) -> None:
         retained = self._state.purge_older_than(
@@ -831,6 +859,8 @@ class AnalysisPipeline:
         )
         self._state.confirm_report_deletions(deleted)
         summary.report_cleanup_failures = len(failed)
+        if failed:
+            emit("warning", "report_cleanup_failed", paths=failed, redactor=self._redactor)
 
     def _set_outstanding_counts(self, summary: RunSummary) -> None:
         summary.outstanding_retries = self._state.count_jobs(JobStatus.RETRY_WAIT)
@@ -851,15 +881,6 @@ def _bounded(value: str, maximum: int) -> str:
         return value
     marker = "\n[TRUNCATED]"
     return value[: maximum - len(marker)] + marker
-
-
-def _safe_error(error: BaseException, redactor: SecretRedactor) -> str:
-    if isinstance(error, ValidationError):
-        return "ValidationError: analysis data failed schema validation"
-    if isinstance(error, RedactionError):
-        return "RedactionError: analysis data could not be safely redacted"
-    message = redactor.redact_text(str(error))[:1_500]
-    return f"{type(error).__name__}: {message}" if message else type(error).__name__
 
 
 def _as_utc(value: datetime) -> datetime:

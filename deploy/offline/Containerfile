@@ -1,4 +1,5 @@
-FROM registry.access.redhat.com/ubi9/ubi:9.6
-RUN dnf install -y gcc make diffutils python3.11 tar gzip && dnf clean all
+# Official UBI 8.2 base; build packages may receive RHEL 8 repository updates.
+FROM registry.access.redhat.com/ubi8/ubi@sha256:3ce39afb014c36f0a285cd832d6722733eea40385e2c53bfeb9d6121ba6a940e
+RUN dnf install -y gcc make diffutils binutils python3.11 tar gzip && dnf clean all
 WORKDIR /source
 ENTRYPOINT ["python3.11", "deploy/offline/build.py"]

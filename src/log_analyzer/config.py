@@ -164,6 +164,48 @@ class OracleSourceConfig(_ConfigModel):
         return value
 
 
+class FileSourceConfig(_ConfigModel):
+    type: Literal["file"]
+    name: str = "local-file-logs"
+    path: Path
+    service: str
+    encoding: Literal["utf-8", "cp949"] = "utf-8"
+    timestamp_timezone: str = "+09:00"
+    filter_time_window: bool = False
+    max_file_bytes: int = Field(default=268_435_456, ge=1, le=2_147_483_648)
+    max_record_bytes: int = Field(default=1_048_576, ge=1, le=10_485_760)
+    header_pattern: str = (
+        r"^(?P<timestamp>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}"
+        r"(?:[.,]\d{1,6})?(?:Z|[+-]\d{2}:\d{2})?)\s+.*?\b"
+        r"(?P<severity>TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\b\s*(?P<message>.*)$"
+    )
+
+    @field_validator("name", "service")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be empty")
+        return value.strip()
+
+    @field_validator("timestamp_timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        return OracleSourceConfig.validate_timezone(value)
+
+    @field_validator("header_pattern")
+    @classmethod
+    def validate_header(cls, value: str) -> str:
+        try:
+            pattern = re.compile(value)
+        except re.error as exc:
+            raise ValueError("invalid log header regular expression") from exc
+        if not {"timestamp", "severity", "message"}.issubset(pattern.groupindex):
+            raise ValueError("header_pattern requires timestamp, severity and message groups")
+        if pattern.match("") is not None:
+            raise ValueError("header_pattern must not match an empty line")
+        return value
+
+
 class AnalysisConfig(_ConfigModel):
     language: Literal["java"] = "java"
     prompt_version: Literal["java-incident-v2"] = "java-incident-v2"
@@ -316,7 +358,7 @@ class ReportConfig(_ConfigModel):
 
 class AppConfig(_ConfigModel):
     run: RunConfig = RunConfig()
-    error_source: ErrorSourceConfig | OracleSourceConfig
+    error_source: ErrorSourceConfig | OracleSourceConfig | FileSourceConfig
     analysis: AnalysisConfig = AnalysisConfig()
     services: tuple[ServiceConfig, ...]
     openai: OpenAIConfig
@@ -330,6 +372,8 @@ class AppConfig(_ConfigModel):
         names = [service.name for service in self.services]
         if len(names) != len(set(names)):
             raise ValueError("service names must be unique")
+        if isinstance(self.error_source, FileSourceConfig) and self.error_source.service not in names:
+            raise ValueError("file source service must match a configured service")
         return self
 
     def service(self, name: str) -> ServiceConfig | None:
@@ -416,6 +460,7 @@ def require_secret(
     value = read_secret(name, environ)
     if value is None:
         raise ConfigError(
-            f"required secret {name} is missing from the environment and systemd credentials"
+            f"required secret {name} is missing from the environment and systemd credentials",
+            diagnostic_message=f"Required credential {name} is missing from the environment and systemd credentials.",
         )
     return value

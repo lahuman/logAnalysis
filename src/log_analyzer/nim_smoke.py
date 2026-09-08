@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 import json
 import os
 from pathlib import Path
-import sys
 import tomllib
 from uuid import uuid4
 
@@ -18,6 +17,7 @@ from .analysis import AnalyzerError, NvidiaNimAnalyzer, OnPremAnalyzer, SecretRe
 from .analysis.models import AnalysisRequest
 from .analysis.openai_responses import InvalidResponseError, PROMPT_VERSION
 from .config import ConfigError, OpenAIConfig, read_secret, require_secret
+from .diagnostics import emit, error_details
 from .report import ReportWriter
 
 
@@ -114,14 +114,13 @@ def main(argv: list[str] | None = None) -> int:
         config = OpenAIConfig.model_validate(data["openai"])
         report = asyncio.run(run_smoke(config, args.output_directory, args.credentials_directory))
     except (ConfigError, ValidationError, KeyError, tomllib.TOMLDecodeError) as exc:
-        print(json.dumps({"event": "nim_smoke_configuration_invalid", "error_type": type(exc).__name__}), file=sys.stderr)
+        emit("error", "nim_smoke_configuration_invalid", error=exc, config_path=str(args.config))
         return 2
     except AnalyzerError as exc:
-        # Analyzer errors contain only local error categories, never remote bodies.
-        print(json.dumps({"event": "nim_smoke_failed", "error_type": type(exc).__name__, "reason": str(exc)}), file=sys.stderr)
+        emit("error", "nim_smoke_failed", error=exc, reason=error_details(exc)["error_message"])
         return 1
     except OSError as exc:
-        print(json.dumps({"event": "nim_smoke_io_failed", "error_type": type(exc).__name__}), file=sys.stderr)
+        emit("error", "nim_smoke_io_failed", error=exc, config_path=str(args.config))
         return 3
     print(json.dumps({"event": "nim_smoke_succeeded", "model": config.model, "report": str(report.resolve())}))
     return 0

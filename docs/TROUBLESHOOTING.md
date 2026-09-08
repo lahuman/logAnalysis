@@ -3,6 +3,40 @@
 먼저 실행한 명령이 `nim_smoke`인지 전체 배치의 `run`/`healthcheck`인지 확인하세요.
 샘플 분석은 LLM만 사용하고, 전체 배치는 ES·Git·상태 DB·POSIX 잠금도 필요합니다.
 
+## 실행 오류의 코드 위치 찾기
+
+`run`, `healthcheck`, `nim_smoke`(또는 `llm_smoke`)의 오류는 stderr에 한 줄 JSON으로
+기록됩니다. 기존 `event`, `level`, 종료 코드는 유지하며 다음 정보를 함께 출력합니다.
+
+| 필드 | 확인할 내용 |
+|---|---|
+| `timestamp` | 오류를 기록한 UTC 시각 |
+| `error_type`, `error_message` | 예외 종류와 마스킹된 오류 설명 |
+| `error_location` | 해당 예외가 발생한 `file`, `line`, `function` |
+| `exception_chain` | 바깥 예외부터 원인 예외 순서. 각 항목의 `location`과 `frames`로 호출 경로 확인 |
+| `log_location` | 오류를 잡아서 기록한 코드 위치. `error_location`과 구분 |
+| `command`, `config_path` | CLI에서 실패한 명령과 설정 파일 |
+| `source_name`, `event_id`, `service` | 개별 이벤트 처리 오류의 대상. 영구 실패에서는 source와 event ID로 DB 작업 조회 |
+| `validation_errors` | 검증 예외 항목 안의 잘못된 `field`와 오류 `type`. 입력값은 생략 |
+
+먼저 `error_message`로 실패한 작업을 확인하고, `exception_chain`의 마지막 항목에서
+실제 원인과 코드 위치를 확인하세요. 예를 들어 `error source fetch failed` 아래에
+`ConnectionError`가 있으면 수집 소스의 연결 실패이고, `frames`에서 호출한 어댑터를
+찾을 수 있습니다. 파일·함수·줄 번호는 실행 중인 Python 코드 기준입니다.
+분석 대상 Java 코드의 수정 위치는 생성된 Markdown 리포트의 근거를 확인하세요.
+
+`analysis_retry_scheduled`, `analysis_permanent_failure`는 실패를 DB에 반영한 직후
+출력되며, DB의 `analysis_job.last_error`에도 코드 위치와 원인 요약을 저장합니다.
+`event_processing_failed` / `retry_processing_failed`의 대상 ID를 확인한 뒤,
+배치 수준의 `infrastructure_failure`와 함께 살펴보세요. `resource_cleanup_failed`는
+리소스 종료 오류이며 이미 발생한 본래 오류를 대체하지 않습니다.
+
+로그에는 소스 코드 본문이나 지역 변수 값을 넣지 않습니다. 설정·분석 스키마 오류는
+입력값과 검증 컨텍스트를 제외하며, 메시지와 대상 식별자에는 기존 비밀정보 마스킹을
+적용합니다. 예외 체인은 최대 8개, 예외별 프레임은 발생 위치 쪽 최대 30개,
+검증 항목은 최대 20개입니다. `exception_chain_truncated=true`이면 체인 일부가 생략됐습니다.
+새 진단 정보는 이후 실행에서 발생하는 오류부터 기록됩니다.
+
 ## 설치·설정
 
 | 증상 | 확인과 해결 |

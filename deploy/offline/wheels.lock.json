@@ -58,9 +58,9 @@
   {
     "name": "cryptography",
     "version": "50.0.1",
-    "filename": "cryptography-50.0.1-cp311-abi3-manylinux_2_34_x86_64.whl",
-    "url": "https://files.pythonhosted.org/packages/85/66/6ccca4722987ddedaa7fc9c3f4708af7431f5535666c174350830888c6b7/cryptography-50.0.1-cp311-abi3-manylinux_2_34_x86_64.whl",
-    "sha256": "51afcfceb15597cf2635068e4ac9a56b2abde622edde17f37d85fd7b5306497a"
+    "filename": "cryptography-50.0.1-cp311-abi3-manylinux_2_28_x86_64.whl",
+    "url": "https://files.pythonhosted.org/packages/e1/1b/82f0f0d8858d4432be1af790477edf62aef90324041aa07c57e57bef1af7/cryptography-50.0.1-cp311-abi3-manylinux_2_28_x86_64.whl",
+    "sha256": "51593d180cf6d179bde5c5d065bed81386b1f381656ae7d042b7ffc87a9895ad"
   },
   {
     "name": "elastic_transport",

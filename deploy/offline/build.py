@@ -1,4 +1,4 @@
-"""Build on an internet-connected RHEL 9 compatible x86_64 host/container."""
+"""Build a glibc 2.28 compatible bundle on a RHEL 8 x86_64 host/container."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import tarfile
@@ -65,15 +66,42 @@ def run(*command: str | Path, cwd: Path | None = None) -> None:
     subprocess.run([str(item) for item in command], cwd=cwd, check=True)
 
 
+def verify_elf_compatibility(root: Path) -> dict:
+    """Reject native binaries requiring a newer glibc than the target server."""
+    checked = 0
+    maximum = (0, 0)
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        with path.open("rb") as stream:
+            if stream.read(4) != b"\x7fELF":
+                continue
+        checked += 1
+        versions = subprocess.check_output(["readelf", "-W", "--version-info", str(path)], text=True)
+        for symbol in re.findall(r"\bName: (GLIBC_[\w.]+)", versions):
+            requirement = symbol.removeprefix("GLIBC_")
+            if not re.fullmatch(r"\d+(?:\.\d+)+", requirement):
+                raise ValueError(f"unsupported glibc ABI {symbol}: {path.relative_to(root)}")
+            version = tuple(map(int, requirement.split(".")))
+            if version > (2, 28):
+                raise ValueError(f"requires {symbol}, target is glibc 2.28: {path.relative_to(root)}")
+            maximum = max(maximum, version)
+    if not checked:
+        raise ValueError("bundle contains no ELF binaries")
+    return {"elf_files_checked": checked, "max_glibc_required": ".".join(map(str, maximum))}
+
+
 def build(output: Path, cache: Path) -> Path:
     if platform.system() != "Linux" or platform.machine() != "x86_64":
-        raise ValueError("build inside the supplied RHEL 9 compatible container")
+        raise ValueError("build inside the supplied RHEL 8 compatible container")
     release = platform.freedesktop_os_release()
-    if not release.get("VERSION_ID", "").startswith("9") or not (
+    if release.get("VERSION_ID", "").split(".")[0] != "8" or not (
         release.get("ID") in {"rhel", "rocky", "almalinux", "centos"}
     ):
-        raise ValueError("RHEL 9 compatible builder required for the bundled Git binary")
-    for executable in ("gcc", "make", "cmp", "strip"):
+        raise ValueError("RHEL 8 compatible builder required for the bundled Git binary")
+    if platform.libc_ver() != ("glibc", "2.28"):
+        raise ValueError("builder must use glibc 2.28")
+    for executable in ("gcc", "make", "cmp", "strip", "readelf"):
         if not shutil.which(executable):
             raise ValueError(f"builder requires {executable}; use deploy/offline/Containerfile")
     output.mkdir(parents=True, exist_ok=True)
@@ -82,7 +110,7 @@ def build(output: Path, cache: Path) -> Path:
     inputs = {name: download(asset, cache) for name, asset in ASSETS.items()}
     wheel_paths = [download(asset, cache) for asset in wheels]
     version = tomllib.loads((REPO / "pyproject.toml").read_text())["project"]["version"]
-    archive = output / f"log-analyzer-{version}-rhel9-x86_64-python3.11.8.tar.gz"
+    archive = output / f"log-analyzer-{version}-rhel8-x86_64-python3.11.8.tar.gz"
     if archive.exists():
         raise FileExistsError(f"use a new output directory: {archive}")
 
@@ -91,7 +119,7 @@ def build(output: Path, cache: Path) -> Path:
         root = work / f"log-analyzer-{version}"
         root.mkdir()
         for directory in ("app", "runtime/git/bin", "config/credentials", "config/certs",
-                          "repos", "data", "third-party/sources", "docs"):
+                          "repos", "data", "data/input", "third-party/sources", "docs"):
             (root / directory).mkdir(parents=True, exist_ok=True)
         (root / "config/credentials").chmod(0o700)
         (root / "data").chmod(0o700)
@@ -100,8 +128,6 @@ def build(output: Path, cache: Path) -> Path:
         run(python, "-I", "-c", "import sys; assert sys.version_info[:3] == (3,11,8)")
         run(python, "-I", "-m", "pip", "--disable-pip-version-check", "install", "--no-index",
             "--no-deps", "--no-compile", "--target", root / "app", *wheel_paths)
-        shutil.copytree(REPO / "src/log_analyzer", root / "app/log_analyzer",
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         for directory in ("src", "tests"):
             shutil.copytree(REPO / directory, root / directory,
                             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
@@ -124,7 +150,7 @@ def build(output: Path, cache: Path) -> Path:
         shutil.copytree(REPO / "deploy/offline", root / "deploy/offline",
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         shutil.copy2(REPO / "docs/OFFLINE_DEPLOYMENT.md", root / "README.md")
-        shutil.copy2(REPO / "config/onprem.toml.example", root / "config/config.toml")
+        shutil.copy2(REPO / "config/file-onprem.toml.example", root / "config/config.toml")
         shutil.copy2(REPO / "config/onprem.toml.example", root / "config/onprem.toml.example")
         for name in ("log-analyzer", "launch.py"):
             shutil.copy2(REPO / "deploy/offline" / name, root / name)
@@ -147,7 +173,9 @@ def build(output: Path, cache: Path) -> Path:
         shutil.copy2(git / "git", root / "runtime/git/bin/git")
         run("strip", root / "runtime/git/bin/git")
         linked = subprocess.check_output(["ldd", str(root / "runtime/git/bin/git")], text=True)
-        unexpected = [line for line in linked.splitlines() if "=>" in line and "libc.so.6" not in line]
+        glibc_libraries = {"libc.so.6", "libpthread.so.0", "librt.so.1", "libdl.so.2", "libm.so.6"}
+        unexpected = [line for line in linked.splitlines() if "=>" in line
+                      and (line.split()[0] not in glibc_libraries or "not found" in line)]
         if unexpected:
             raise ValueError(f"unexpected bundled Git libraries: {unexpected}")
         for name in ("git", "zlib"):
@@ -156,13 +184,16 @@ def build(output: Path, cache: Path) -> Path:
         shutil.copy2(zlib / "README", root / "third-party/ZLIB-README")
         shutil.copy2(Path(__file__), root / "third-party/build.py")
         shutil.copy2(REPO / "deploy/offline/wheels.lock.json", root / "third-party/wheels.lock.json")
-        manifest = {"application_version": version, "python": "3.11.8", "target": "rhel9-x86_64",
+        compatibility = verify_elf_compatibility(root)
+        manifest = {"application_version": version, "python": "3.11.8", "target": "rhel8-x86_64",
+                    "minimum_glibc": "2.28", "elf_compatibility": compatibility,
+                    "editable_paths": ["src/", "templates/", "config/config.toml"],
                     "builder": {"os": release, "glibc": platform.libc_ver()},
                     "archives": ASSETS, "wheels": wheels, "files": {}}
         for path in sorted(root.rglob("*")):
             name = path.relative_to(root).as_posix()
-            if name == "config/config.toml":
-                continue  # Operator settings are intentionally editable after extraction.
+            if name == "config/config.toml" or name.startswith(("src/", "templates/")):
+                continue  # Application source, report templates and settings are operator-editable.
             if path.is_symlink():
                 manifest["files"][name] = "symlink:" + os.readlink(path)
             elif path.is_file():

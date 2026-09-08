@@ -1,7 +1,11 @@
 # 구현 및 검증 현황
 
-기준일: 2026-09-06. 현재 버전은 `0.3.0`이다. Oracle SQL 수집기를 추가했으며
-Windows / Python 3.11.8에서 139개 중 133 통과·6 제외를 확인했다.
+기준일: 2026-09-08. 현재 버전은 `0.5.0`이다. 로컬 텍스트 로그 수집과 실행 오류 진단을 추가했으며
+Windows / Python 3.11.8에서 169개 중 163 통과·6 제외를 확인했다.
+파일 테스트 11개는 Java 멀티라인·시간대·UTF-8/CP949·헤더 설정·용량 제한·스냅샷,
+과거 로그·중복 재실행·추가 기록·실패 후 복구·DB 인증 없는 CLI 선택을 검증한다.
+오류 진단 회귀 테스트 16개는 예외 발생 위치·체인, 동시 처리 대상 식별, 재시도·영구 실패 저장,
+설정 검증 입력값 비노출, 비밀값 마스킹, 리소스 종료 오류와 smoke 진단을 검증한다.
 제외 항목은 실제 Oracle 1개·ES 3개·POSIX 잠금 2개다. Oracle 접속 정보가 없어
 실제 DB 연결·SQL 실행·TCPS는 아직 검증하지 않았다. [Oracle 안내](ORACLE.md)를 참고한다.
 
@@ -12,17 +16,19 @@ Windows / Python 3.11.8에서 139개 중 133 통과·6 제외를 확인했다.
 | 영역 | 현재 동작 |
 |---|---|
 | 수집 | Elasticsearch 8.x 비동기 클라이언트, PIT·search_after·heartbeat, 고정 조회 구간, 중복 제거, 잘못된 문서 격리 |
+| 로컬 파일 | UTF-8/CP949, 멀티라인 Java 로그, 임시 스냅샷, 과거 기록 조회·중복 제거·용량 제한 |
 | Oracle SQL | 테이블·뷰 컬럼 매핑, 비동기 Thin 커서, 바인드 조회·UTC 정규화·CLOB 제한; 실제 DB 미검증 |
 | 파싱 | Java 예외 체인, suppressed·생략 프레임·module·inner class·default package, 구조화 프레임, 범용 fallback |
 | 소스 조회 | 이벤트 commit 우선; commit이 없으면 로컬 ref SHA 고정, 오류 라인 blame과 해당 파일의 최근 patch 이력 조회 |
 | 분석 | 정제·크기 제한한 Context, Responses HTTP 호출, 구조화 응답, 파일·라인 근거 필터링 |
 | NIM 연동 | Chat Completions 어댑터, 출력 모드 선택, 공급자별 캐시 구분, 합성 Java smoke 도구 |
 | 중요망 | onprem Chat Completions, 사설 CA, 선택적 인증, 명시적 HTTP 허용, 프록시 비사용 |
-| 압축 배포 | Python 3.11.8·Linux 의존성 28개·로컬 Git 동봉, checksum/manifest, 오프라인 doctor, 설정 점검·smoke 실행기 |
+| 압축 배포 | RHEL 8.2 / glibc 2.28 대상 ELF 검사, Python 3.11.8·Linux 의존성 28개·로컬 Git 동봉, checksum/manifest, 소스 직접 수정·문법 검사·test 실행기 |
 | 상태 | SQLite 체크포인트·작업·분석 캐시·재시도·중단 복구·보존 정리 큐 |
 | 출력·운영 | Markdown 리포트, CLI 상태 요약·종료 코드, POSIX 잠금, systemd service·timer와 credential 예시 |
+| 오류 진단 | UTC JSON 로그, 오류 메시지·파일·함수·줄 번호·원인 체인, 이벤트별 실패·재시도 로그, DB 원인 요약·마스킹 |
 
-패키지 버전은 `0.3.0`, 프롬프트 버전은 `java-incident-v2`, 분석기 버전은 `1`이다.
+패키지 버전은 `0.5.0`, 프롬프트 버전은 `java-incident-v2`, 분석기 버전은 `1`이다.
 중요망 브랜치의 전체 작업·산출물 기준은 [브랜치 작업 정리](IMPORTANT_NETWORK.md)에 있다.
 현재 리포트는 이벤트별로 생성하며 재발 시 기존 리포트를 갱신하지 않는다.
 대표 리포트 갱신과 오류 그룹의 최초·최종 시각 집계는 후속 개선안이며 미구현이다.
@@ -33,6 +39,7 @@ Windows / Python 3.11.8에서 139개 중 133 통과·6 제외를 확인했다.
 
 | 시점·환경 | 실행 결과 | 제외 또는 제한 |
 |---|---|---|
+| 2026-09-08 오류 진단 추가 / Windows Python 3.11.8 | 169개 실행, 163 통과·6 제외; compileall·pip check·diff check 통과 | 실제 Oracle 1개·ES 3개·POSIX 잠금 2개 제외; 현재 소스의 결과이며 배포 압축파일은 이번 작업에서 재빌드하지 않음 |
 | 2026-09-06 Oracle 추가 / Windows Python 3.11.8 | 139개 실행, 133 통과·6 제외; compileall·pip check·diff check 통과 | Oracle 단위·연결 경로 15개 통과; 실제 Oracle 1개·ES 3개·POSIX 2개 제외 |
 | 2026-09-06 Oracle 추가 / Rocky Linux 9, 동봉 Python 3.11.8 | 139개 실행, 134 통과·5 제외 | 실제 Oracle 1개·ES 3개·Windows 전용 1개 제외 |
 | 0.3.0 압축파일 / 일반 사용자 / 외부 통신 차단 | Oracle 드라이버를 포함한 28개 의존성 로딩, 공백 경로 실행, HTTP 인증·HTTPS 사설 CA, 합성 리포트 3개, Git·변조 감지 통과 | Oracle DB 접속과 실제 내부 모델 추론은 제외; 배포본 제작 후 검증이므로 이 기록은 배포본 내 문서보다 최신 |
@@ -101,10 +108,11 @@ Docker Compose 구성은 준비되어 있지만, 위 VM 테스트 결과를 Dock
 
 | 항목 | 완료 기준 |
 |---|---|
+| 최신 0.5.0 배포본 | 오류 진단 변경을 포함해 RHEL 8 빌더에서 재빌드하고 ELF 요구 버전·일반 사용자·외부 통신 차단·동봉 테스트·파일 배치를 재검증 |
 | OpenAI 실제 Responses smoke | 테스트 계정·선정 모델·비식별 로그로 실제 구조화 응답과 근거·리포트를 확인 |
 | NVIDIA NIM 전체 배치 | smoke는 완료; 실제 ES·Git·NIM을 한 파이프라인으로 연결해 완료 상태·캐시·리포트 검증 |
 | systemd 실제 운영 | 전용 사용자·credential로 service와 timer를 실행하고 2회 이상 주기, 중복 잠금, 종료 코드와 journal 확인 |
-| RHEL 9 최종 호환 | 목표 Python 3.11.8, SELinux, 파일 권한, 내부 CA와 TLS를 실제 대상 환경에서 확인 |
+| RHEL 8.2 최종 호환 | 목표 glibc 2.28·Python 3.11.8, SELinux, 파일 권한, 내부 CA와 TLS를 실제 대상 환경에서 확인 |
 | 실제 온프레미스 모델 | 제품·모델·내부 endpoint 선정 후 smoke 및 ES → Git → LLM 전체 배치를 실제 환경에서 확인 |
 | 기관별 운영 조건 | SELinux·송신 ACL·스케줄러 및 FIPS 요구를 최종 서버에서 확인; 동봉 OpenSSL의 FIPS 적합성을 검증한 것은 아님 |
 | 운영 Oracle 계약 | DB 버전·테이블·컬럼·시각 기준·SELECT 권한·TCPS 확인 후 읽기 전용 통합 테스트와 실제 내부 LLM 배치 수행 |

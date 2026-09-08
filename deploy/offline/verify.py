@@ -1,19 +1,22 @@
 """Verify an archive in an isolated network namespace with loopback enabled.
 
-Run on a RHEL 9 compatible test host:
+Run on a RHEL 8 compatible test host:
   unshare --net sh -c 'ip link set lo up; python3.11 deploy/offline/verify.py ARCHIVE'
 This uses synthetic HTTP responses, not an actual LLM model.
 """
 
 import argparse
+from datetime import UTC, datetime, timedelta
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import ipaddress
 import os
 from pathlib import Path
 import socket
 import ssl
 import subprocess
+import sys
 import tarfile
 import tempfile
 import threading
@@ -114,10 +117,23 @@ def verify(archive: Path) -> None:
         # A self-signed internal CA must fail by default and succeed when configured.
         certificate = parent / "test-ca.pem"
         private_key = parent / "test-ca-key.pem"
-        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-                        "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1",
-                        "-keyout", str(private_key), "-out", str(certificate)],
-                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        sys.path.insert(0, str(root / "app"))
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "127.0.0.1")])
+        cert = (x509.CertificateBuilder().subject_name(subject).issuer_name(subject)
+                .public_key(key.public_key()).serial_number(x509.random_serial_number())
+                .not_valid_before(datetime.now(UTC) - timedelta(minutes=1))
+                .not_valid_after(datetime.now(UTC) + timedelta(days=1))
+                .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]), critical=False)
+                .sign(key, hashes.SHA256()))
+        private_key.write_bytes(key.private_bytes(serialization.Encoding.PEM,
+                                serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+        private_key.chmod(0o600)
+        certificate.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
         tls_server = ThreadingHTTPServer(("127.0.0.1", 0), SyntheticLLM)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(certificate, private_key)
@@ -161,14 +177,58 @@ def verify(archive: Path) -> None:
         assert "class Source" in git_run("blame", "-L", "1,1", "HEAD", "--", "Source.java")
         assert "Synthetic source" in git_run("log", "-p", "-1", "--", "Source.java")
         git_run("cat-file", "-s", "HEAD:Source.java")
+        # Exercise local text ingestion through the real CLI, Git resolver, state and reports.
+        java = repo / "src/main/java/com/example/smoke/OrderService.java"
+        java.parent.mkdir(parents=True)
+        java.write_text("package com.example.smoke;\npublic class OrderService {\n"
+                        "public String customerName(String customer) {\nreturn customer.trim();\n}\n}\n")
+        git_run("add", ".")
+        git_run("-c", "commit.gpgsign=false", "commit", "-m", "Synthetic local-file source")
+        log = root / "data/input/application.log"
+        record = ("2000-01-01 09:00:00 ERROR Logger - customer missing\n"
+                  "java.lang.NullPointerException: customer missing\n"
+                  "\tat com.example.smoke.OrderService.customerName(OrderService.java:4)\n")
+        log.write_text(record)
+        file_server = ThreadingHTTPServer(("127.0.0.1", 0), SyntheticLLM)
+        file_worker = threading.Thread(target=file_server.serve_forever, daemon=True)
+        file_worker.start()
+        calls_before = len(SyntheticLLM.calls)
+        try:
+            file_config = configuration.replace(
+                f"https://127.0.0.1:{tls_server.server_port}/v1", f"http://127.0.0.1:{file_server.server_port}/v1"
+            ).replace("allow_http = false", "allow_http = true")
+            file_config = file_config.replace('"repos/order-api.git"', json.dumps(str(repo)))
+            file_config = file_config.replace('"com.example.order"', '"com.example.smoke"')
+            source.write_text(file_config)
+            first = json.loads(launch("run"))["summary"]
+            replay = json.loads(launch("run"))["summary"]
+            assert first["completed"] == 1 and replay["duplicate_events"] == 1
+            log.write_text(record + record)
+            appended = json.loads(launch("run"))["summary"]
+            assert appended["completed"] == 1 and appended["cache_hits"] == 1
+            assert len(SyntheticLLM.calls) == calls_before + 1
+            assert len(list((root / "data/reports").rglob("*.md"))) == 2
+        finally:
+            file_server.shutdown()
+            file_server.server_close()
+            file_worker.join(timeout=5)
         # Operator config, credentials and reports do not invalidate runtime checksums.
         assert "offline_doctor_succeeded" in launch("doctor")
-        module = root / "app/log_analyzer/__init__.py"
-        module.write_text(module.read_text() + "\n# integrity test\n")
+        module = root / "src/log_analyzer/__init__.py"
+        original_module = module.read_text()
+        module.write_text(original_module + '\n__version__ = "editable-check"\n')
+        assert '"application": "editable-check"' in launch("doctor")
+        module.write_text(original_module + "\ndef invalid(:\n")
+        assert "Python syntax error" in launch("doctor", 2)
+        module.write_text(original_module)
+        assert "Ran " in launch("test")
+        dependency = root / "app/certifi/__init__.py"
+        dependency.write_text(dependency.read_text() + "\n# integrity test\n")
         assert "bundle file mismatch" in launch("doctor", 2)
         print(json.dumps({"event": "offline_archive_verified", "external_network": False,
                           "relocated_path_with_spaces": True, "synthetic_llm_calls": len(SyntheticLLM.calls),
-                          "bundled_git": True, "custom_ca_tls": True,
+                          "bundled_git": True, "custom_ca_tls": True, "local_file_cli_replay_append": True,
+                          "editable_source": True, "source_syntax_check": True, "bundled_tests": True,
                           "tamper_detection": True, "sha256": digest}))
 
 

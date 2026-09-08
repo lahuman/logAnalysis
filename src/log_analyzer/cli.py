@@ -6,18 +6,17 @@ import argparse
 import asyncio
 from collections.abc import Callable, Sequence
 from datetime import timedelta
-import json
 from pathlib import Path
 import signal
 import ssl
 import sys
-from typing import Any
 from urllib.parse import quote
 
 import httpx
 
 from .analysis import NvidiaNimAnalyzer, OnPremAnalyzer, OpenAIResponsesAnalyzer, SecretRedactor
 from .config import AppConfig, load_config, read_secret, require_secret
+from .diagnostics import emit as _emit
 from .errors import (
     AlreadyRunningError,
     ConfigError,
@@ -28,7 +27,7 @@ from .pipeline import AnalysisPipeline, PipelineInfrastructureError
 from .report import ReportWriter
 from .run_lock import RunLock
 from .source_code import GitSourceResolver, SourceResolutionError
-from .sources import ElasticsearchErrorSource, ErrorSource, OracleErrorSource
+from .sources import ElasticsearchErrorSource, ErrorSource, FileErrorSource, OracleErrorSource
 from .storage import SQLiteStateStore
 
 
@@ -61,11 +60,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     config_path: Path = arguments.config
     try:
         config = load_config(config_path)
-    except ConfigError:
+    except ConfigError as exc:
         _emit(
             "error",
             "configuration_invalid",
             config_path=str(config_path),
+            command=arguments.command,
+            error=exc,
         )
         return EXIT_CONFIG
 
@@ -79,15 +80,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             owner=exc.metadata,
         )
         return EXIT_OK
-    except (UnsupportedPlatformError, OSError):
-        _emit("error", "run_lock_unavailable")
+    except (UnsupportedPlatformError, OSError) as exc:
+        _emit(
+            "error", "run_lock_unavailable", error=exc,
+            lock_path=str(config.run.lock_file), command=arguments.command,
+            config_path=str(config_path),
+        )
         return EXIT_INFRASTRUCTURE
 
     try:
         try:
             return asyncio.run(_execute(arguments.command, config))
-        except ConfigError:
-            _emit("error", "runtime_configuration_invalid")
+        except ConfigError as exc:
+            _emit(
+                "error", "runtime_configuration_invalid", error=exc,
+                command=arguments.command, config_path=str(config_path),
+            )
             return EXIT_CONFIG
         except (
             PipelineInfrastructureError,
@@ -98,7 +106,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             _emit(
                 "error",
                 "infrastructure_failure",
-                error_type=type(exc).__name__,
+                error=exc,
+                command=arguments.command,
+                config_path=str(config_path),
+                source_name=config.error_source.name,
             )
             return EXIT_INFRASTRUCTURE
         except KeyboardInterrupt:
@@ -108,7 +119,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             _emit(
                 "error",
                 "internal_failure",
-                error_type=type(exc).__name__,
+                error=exc,
+                command=arguments.command,
+                config_path=str(config_path),
             )
             return EXIT_INTERNAL
     finally:
@@ -124,7 +137,7 @@ async def _execute(command: str, config: AppConfig) -> int:
         oracle_username = require_secret(config.error_source.username_secret)
         oracle_password = require_secret(config.error_source.password_secret)
         oracle_wallet_password = read_secret(config.error_source.wallet_password_secret)
-    else:
+    elif config.error_source.type == "elasticsearch":
         es_api_key = read_secret(config.error_source.api_key_secret)
         es_username = read_secret(config.error_source.username_secret)
         es_password = read_secret(config.error_source.password_secret)
@@ -133,7 +146,8 @@ async def _execute(command: str, config: AppConfig) -> int:
             es_password = None
         elif (es_username is None) != (es_password is None):
             raise ConfigError(
-                "Elasticsearch username and password credentials must be provided together"
+                "Elasticsearch username and password credentials must be provided together",
+                diagnostic_message="Elasticsearch username and password credentials must be provided together.",
             )
 
     state: SQLiteStateStore | None = None
@@ -150,6 +164,9 @@ async def _execute(command: str, config: AppConfig) -> int:
                     wallet_password=oracle_wallet_password,
                     max_text_characters=config.analysis.max_log_characters,
                 )
+            elif config.error_source.type == "file":
+                source = FileErrorSource(config=config.error_source,
+                                         max_text_characters=config.analysis.max_log_characters)
             else:
                 source = ElasticsearchErrorSource(
                     url=config.error_source.url,
@@ -254,10 +271,12 @@ async def _execute(command: str, config: AppConfig) -> int:
                 await source.close()
             except Exception as exc:
                 cleanup_error = exc
+                _emit("error", "resource_cleanup_failed", error=exc, resource="error_source")
         if state is not None:
             try:
                 state.close()
             except Exception as exc:
+                _emit("error", "resource_cleanup_failed", error=exc, resource="state")
                 if cleanup_error is None:
                     cleanup_error = exc
         if active_error is None and cleanup_error is not None:
@@ -325,22 +344,3 @@ def _install_sigterm_handler(stop_event: asyncio.Event) -> Callable[[], None]:
             return
 
     return restore
-
-
-def _emit(level: str, event: str, **fields: Any) -> None:
-    record = {
-        "level": level,
-        "event": event,
-        **fields,
-    }
-    print(
-        json.dumps(
-            record,
-            ensure_ascii=True,
-            separators=(",", ":"),
-            sort_keys=True,
-            default=str,
-        ),
-        file=sys.stderr,
-        flush=True,
-    )

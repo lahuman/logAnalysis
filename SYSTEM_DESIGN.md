@@ -1,5 +1,9 @@
 # 로그 오류 분석 및 LLM 리포트 시스템 설계
 
+현재 0.5.0 폐쇄망 배포는 RHEL 8.2 x86_64 / glibc 2.28 / Python 3.11.8 기준이며,
+`src/log_analyzer`를 직접 수정해 실행합니다. 최신 배포·수정 절차는
+[폐쇄망 소스 수정 안내](docs/OFFLINE_DEVELOPMENT.md)를 따릅니다.
+
 - 상태: MVP 및 Git ref fallback 구현 완료, Rocky Linux VM·실제 Elasticsearch 통합 테스트 통과 (OpenAI 실연동·systemd 운영 검증 대기)
 - 작성일: 2026-09-04
 - 최종 현행화: 2026-09-05

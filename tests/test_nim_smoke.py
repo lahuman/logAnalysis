@@ -76,3 +76,18 @@ class NimSmokeTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(2, nim_smoke.main(["--config", str(config)]))
             analyzer.assert_not_called()
             self.assertEqual("nim_smoke_configuration_invalid", json.loads(output.getvalue())["event"])
+            record = json.loads(output.getvalue())
+            self.assertIn("NVIDIA_API_KEY", record["error_message"])
+            self.assertEqual("require_secret", record["error_location"]["function"])
+
+    def test_io_failure_has_reason_and_location(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = io.StringIO()
+            with contextlib.redirect_stderr(output):
+                status = nim_smoke.main(["--config", str(Path(directory) / "missing.toml")])
+        self.assertEqual(3, status)
+        record = json.loads(output.getvalue())
+        self.assertEqual("nim_smoke_io_failed", record["event"])
+        self.assertEqual("FileNotFoundError", record["error_type"])
+        self.assertIn("missing.toml", record["error_message"])
+        self.assertTrue(any(frame["function"] == "main" for frame in record["exception_chain"][0]["frames"]))

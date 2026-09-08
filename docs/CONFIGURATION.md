@@ -4,6 +4,14 @@
 샘플 NIM 분석만 실행한다면 [nvidia-nim.toml.example](../config/nvidia-nim.toml.example)이면
 충분합니다. 알 수 없는 키, 중복 테이블, 허용 범위를 벗어난 값은 설정 오류입니다.
 
+## 로그 입력 선택
+
+`error_source.type`은 `file`, `oracle`, `elasticsearch` 중 하나입니다.
+생략하면 기존 설정과 같이 Elasticsearch입니다. 0.4.0 폐쇄망 배포본은 `file` 예제를 기본 설정으로 복사합니다.
+[파일 입력 안내](LOCAL_FILES.md)와 [file-onprem.toml.example](../config/file-onprem.toml.example)을 참고하세요.
+`path`, `service`, `encoding`, `timestamp_timezone`을 설정하며 `service`는 `services`에 정의된 이름이어야 합니다.
+기본 `filter_time_window = false`는 과거 파일까지 전체 조회합니다.
+
 ## LLM 선택
 
 기존 설정과의 호환성을 위해 NVIDIA NIM과 온프레미스 모두 `[openai]` 테이블을 사용합니다.

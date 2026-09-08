@@ -1,0 +1,47 @@
+# 실행: python -m log_analyzer run --config config/orders.toml
+# 상대 경로는 실행 디렉터리 기준입니다. 폐쇄망 실행기는 배포 루트 기준입니다.
+[run]
+lock_file = "state/orders/run.lock"
+batch_size = 500
+max_concurrency = 2
+ingestion_delay_seconds = 0
+severities = ["ERROR", "FATAL"]
+
+[error_source]
+type = "file"
+name = "orders-file-logs"
+path = "input/orders/application.log"
+service = "orders"
+encoding = "utf-8"
+timestamp_timezone = "+09:00"
+filter_time_window = false
+
+[analysis]
+language = "java"
+source_context_lines = 75
+
+[services.orders]
+repository = "repos/orders.git"
+branch = "main"
+source_roots = ["src/main/java"]
+application_packages = ["com.example.order"]
+diff_history = 5
+
+[openai]
+provider = "onprem"
+base_url = "https://llm.internal:8000/v1"
+model = "replace-with-internal-model-id"
+auth_required = true
+api_key_secret = "LLM_API_KEY"
+structured_output = "json_schema"
+timeout_seconds = 120
+max_output_tokens = 4096
+# 사설 CA가 필요한 경우 지정합니다.
+# tls_ca = "config/certs/internal-ca.pem"
+
+[state]
+path = "state/orders/state.db"
+
+[report]
+directory = "reports/orders"
+retention_days = 30

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import io
+import json
 import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from log_analyzer.analysis.models import AnalysisRequest, AnalysisResult
 from log_analyzer.analysis.openai_responses import (
@@ -136,6 +140,58 @@ class Writer:
 
 
 class PipelineTests(unittest.IsolatedAsyncioTestCase):
+    async def test_retry_and_permanent_failures_are_logged_and_stored_with_location(self) -> None:
+        for index, failure in enumerate((RetryableAnalyzerError, InvalidResponseError)):
+            event_id = f"diagnostic-{index}"
+            source = PagedSource({None: ErrorPage((event(event_id),), None)})
+            output = io.StringIO()
+            with contextlib.redirect_stderr(output):
+                await self.pipeline(source, analyzer=Analyzer([failure("password=private-value")])).run()
+            records = [json.loads(line) for line in output.getvalue().splitlines()]
+            record = next(item for item in records if item.get("event_id") == event_id)
+            self.assertEqual("analysis_retry_scheduled" if index == 0 else "analysis_permanent_failure", record["event"])
+            self.assertEqual("logs", record["source_name"])
+            self.assertEqual("analyze", record["error_location"]["function"])
+            self.assertNotIn("private-value", output.getvalue())
+            job = self.store.get_job("logs", event_id)
+            self.assertIn("test_pipeline.py:", job.last_error)
+            self.assertNotIn("private-value", job.last_error)
+
+    async def test_concurrent_failure_keeps_the_failing_event_identity(self) -> None:
+        source = PagedSource({None: ErrorPage((event("good"), event("bad")), None)})
+
+        class FailingResolver(Resolver):
+            def resolve(self, event, parsed, *, resolved_commit_hint=None):
+                if event.event_id == "bad":
+                    raise RuntimeError("cannot resolve this event")
+                return context()
+
+        output = io.StringIO()
+        with contextlib.redirect_stderr(output):
+            with self.assertRaises(PipelineInfrastructureError):
+                await self.pipeline(source, resolver=FailingResolver()).run()
+        records = [json.loads(line) for line in output.getvalue().splitlines()]
+        failures = [item for item in records if item["event"] == "event_processing_failed"]
+        self.assertEqual(1, len(failures))
+        self.assertEqual("bad", failures[0]["event_id"])
+        self.assertEqual("orders", failures[0]["service"])
+        self.assertEqual("resolve", failures[0]["error_location"]["function"])
+        self.assertIsNone(self.store.get_checkpoint("logs"))
+
+    async def test_healthcheck_identifies_the_failing_dependency(self) -> None:
+        source = PagedSource({})
+        resolver = Resolver()
+        pipeline = self.pipeline(source, resolver=resolver)
+        for target, method, message in (
+            (self.store, "healthcheck", "state database healthcheck failed"),
+            (source, "healthcheck", "error source healthcheck failed"),
+            (resolver, "healthcheck", "Git repository healthcheck failed"),
+        ):
+            with patch.object(target, method, side_effect=OSError("unavailable")):
+                with self.assertRaisesRegex(PipelineInfrastructureError, message) as raised:
+                    await pipeline.healthcheck()
+            self.assertIsInstance(raised.exception.__cause__, OSError)
+
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.directory = Path(self.temporary_directory.name)
