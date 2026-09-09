@@ -120,7 +120,7 @@ DATE/TIMESTAMP는 `timestamp_timezone`, 시간대 포함 TIMESTAMP는 `timestamp
 | `analysis.prompt_version` | `java-incident-v2` | 현재 코드와 일치해야 함 |
 | `analysis.analyzer_version` | `1` | 현재 코드와 일치해야 함 |
 | `analysis.max_log_characters` | 100000 | 파싱할 로그 문자 상한 |
-| `analysis.source_context_lines` | 30 | 오류 라인 앞뒤 범위; 전체 설정 예시는 75 |
+| `analysis.source_context_lines` | 30 | 오류 라인 앞뒤 최소 범위. 포함된 Java 메소드·생성자의 선언과 본문 전체까지 확장; 경계를 찾지 못하면 이 범위 사용. 전체 설정 예시는 75 |
 | `analysis.max_source_bytes` | 256000 | 조회할 소스 파일 크기 상한 |
 | `analysis.max_git_change_chars` | 30000 | Git 변경 이력 문자 상한 |
 | `state.path` | `/var/lib/log-analyzer/state.db` | SQLite 상태 파일 |
@@ -130,6 +130,11 @@ DATE/TIMESTAMP는 `timestamp_timezone`, 시간대 포함 TIMESTAMP는 `timestamp
 
 전송 직전 정제 단계에서 메시지 4000자, stack trace 20000자, 소스 60000자,
 변경 이력 30000자 상한이 추가로 적용됩니다. 원본 파일 전체는 보내지 않습니다.
+소스 범위에는 오류가 발생한 메소드 전체를 포함합니다. 정제한 소스가 60000자를 넘거나
+요청 생성 시 100000자를 넘으면 메소드를 잘라 보내지 않고 해당 분석을 실패로 기록합니다.
+메소드 경계를 확인할 수 없는 초기화 블록·불완전한 소스 등에는 오류 줄 앞뒤 범위를 사용합니다.
+메소드 전체 분석은 이전 부분 소스 분석 캐시와 구분합니다. 이미 완료된 이벤트와 저장된
+재시도 요청을 이번 변경으로 자동 재수집하거나 재작성하지는 않습니다.
 
 보존 정리는 완전한 수집 구간을 처리한 실행에서 수행됩니다. 재시도 중 작업과 아직
 참조되는 리포트는 단순 파일 나이만으로 삭제하지 않습니다. 종료 작업의 `updated_at`,

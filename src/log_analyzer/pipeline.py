@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -25,6 +25,7 @@ from .diagnostics import emit, error_summary
 from .fingerprint import make_fingerprint
 from .models import ErrorEvent, ErrorQuery, ParsedError, SourceContext
 from .parsers import GenericErrorParser, JavaErrorParser, parse_event
+from .parsers.java import truncate_java_stack_trace
 from .report import ReportWriter
 from .source_code.git import GitSourceResolver, ServiceSourceConfig, SourceResolutionError
 from .sources.base import ErrorSource
@@ -61,6 +62,7 @@ class RunSummary:
     report_cleanup_failures: int = 0
     checkpoint_saved: bool = False
     interrupted: bool = False
+    priority_counts: dict[str, int] = field(default_factory=lambda: {"높음": 0, "중간": 0, "낮음": 0})
 
     @property
     def has_failures(self) -> bool:
@@ -77,6 +79,24 @@ class RunSummary:
             values[name] = _as_utc(values[name]).isoformat()
         values["has_failures"] = self.has_failures
         return values
+
+    def to_korean_summary(self, report_directory: Path) -> tuple[str, str, str]:
+        status = "처리 중단" if self.interrupted else "처리 완료"
+        high, medium, low = (self.priority_counts[level] for level in ("높음", "중간", "낮음"))
+        if high:
+            action = "높음 오류부터 즉시 대응하세요."
+        elif medium:
+            action = "중간 오류부터 당일 점검하세요."
+        elif low:
+            action = "낮음 오류를 정기 개선에 반영하세요."
+        else:
+            action = "분류된 리포트가 없습니다."
+        directory = " ".join(SecretRedactor().redact_text(str(report_directory)).split())
+        return (
+            f"{status}: 리포트 {self.completed + self.no_source}건(분석 완료 {self.completed}건, 소스 미확인 {self.no_source}건), 중복 확인 {self.duplicate_events}건.",
+            f"오류 수준: 높음 {high}건 · 중간 {medium}건 · 낮음 {low}건(소스 미확인은 중간·잠정 판단). {action}",
+            f"남은 작업: 재시도 대기 {self.outstanding_retries}건 · 실패 {self.outstanding_permanent_failures}건 · 정리 실패 {self.report_cleanup_failures}건. 결과: {directory}",
+        )
 
 
 class AnalysisPipeline:
@@ -129,7 +149,8 @@ class AnalysisPipeline:
         self._source_name = source_name
         self._model = model
         self._prompt_version = prompt_version
-        self._analyzer_version = analyzer_version
+        # Results based on a partial method must not satisfy full-method requests.
+        self._analyzer_version = f"{analyzer_version}:full-method-v1:priority-v1:ko-v1"
         self._batch_size = batch_size
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._initial_lookback = initial_lookback
@@ -453,7 +474,7 @@ class AnalysisPipeline:
         self._require_status(event, JobStatus.PARSED, now=now)
         reason: str | None = None
         if event.service not in self._services:
-            reason = "No configured source repository exists for this service."
+            reason = "이 서비스에 설정된 소스 저장소가 없습니다."
 
         source_context: SourceContext | None = None
         if reason is None:
@@ -468,8 +489,7 @@ class AnalysisPipeline:
                 raise PipelineInfrastructureError("Git source resolution failed") from exc
             if source_context is None:
                 reason = (
-                    "The Java stack frame could not be resolved against the "
-                    "configured Git source revision."
+                    "Java 스택의 오류 위치에 해당하는 소스를 설정한 Git 버전에서 찾지 못했습니다."
                 )
 
         if source_context is None:
@@ -477,7 +497,7 @@ class AnalysisPipeline:
                 event,
                 parsed,
                 fingerprint,
-                reason or "Source unavailable.",
+                reason or "소스를 확인할 수 없습니다.",
                 now,
             )
             self._require_status(
@@ -487,6 +507,7 @@ class AnalysisPipeline:
                 now=now,
             )
             summary.no_source += 1
+            summary.priority_counts["중간"] += 1
             return
 
         if not self._state.set_resolved_git_commit(
@@ -727,6 +748,7 @@ class AnalysisPipeline:
         if not updated:
             raise PipelineInfrastructureError("completed analysis job disappeared")
         summary.completed += 1
+        summary.priority_counts[result.error_priority.level] += 1
 
     async def _write_no_source(
         self,
@@ -778,7 +800,7 @@ class AnalysisPipeline:
             message=_bounded(
                 parsed.message or event.message or "No error message", 8_000
             ),
-            stack_trace=_bounded(_event_text(event), 30_000),
+            stack_trace=truncate_java_stack_trace(_event_text(event), 30_000),
             parse_warnings=tuple(
                 _bounded(item, 2_000) for item in parsed.parse_warnings[:50]
             ),
@@ -791,7 +813,7 @@ class AnalysisPipeline:
                 else None
             ),
             class_name=_bounded(context.class_name, 1_000),
-            source_code=_bounded(context.source_code, 100_000),
+            source_code=context.source_code,
             context_start_line=context.context_start_line,
             context_end_line=context.context_end_line,
             revision_source=context.revision_source,

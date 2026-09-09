@@ -72,6 +72,11 @@ Caused by: java.lang.NullPointerException: customer missing
 
 날짜·시각·로그 수준이 있는 헤더에서 한 건을 시작하고, 다음 헤더 직전까지를 같은 기록으로 묶습니다.
 `Caused by:`, `Suppressed:`, `... N more`와 여러 줄 stack trace를 기존 Java 파서로 전달합니다.
+분석 기준은 마지막 `Caused by:`의 가장 깊은 주 원인입니다. 해당 예외의 발생 위치부터
+애플리케이션 소스를 찾으며, `Suppressed:`와 그 내부 원인은 주 원인에서 제외합니다.
+긴 로그를 입력·분석 요청의 길이 제한에 맞춰 줄일 때도 가장 깊은 원인과 그 첫 스택 프레임을
+우선 보존하고 `[STACK_TRACE_TRUNCATED]`를 표시합니다. 원인 구간 자체가 상한보다 크면
+뒷부분은 생략되며, 상위 스택이 생략된 경우 `... N more`를 완전히 복원하지 못할 수 있습니다.
 INFO·WARN 헤더도 기록 경계로 사용하며 기본 분석 대상은 `run.severities`의 ERROR·FATAL입니다.
 파일 순서로 처리하므로 시간순으로 정렬되어 있지 않아도 됩니다.
 

@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from log_analyzer.analysis.models import (
     AnalysisRequest,
     AnalysisResult,
+    ErrorPriority,
     Evidence,
     RecommendedFix,
     RootCause,
@@ -38,6 +39,24 @@ def valid_request(**changes: object) -> AnalysisRequest:
 
 
 class AnalysisValidationTests(unittest.TestCase):
+    def test_priority_accepts_only_three_levels_and_requires_impact_details(self) -> None:
+        base = ErrorPriority.unassessed().model_dump()
+        for level in ("높음", "중간", "낮음"):
+            with self.subTest(level=level):
+                self.assertEqual(level, ErrorPriority.model_validate({**base, "level": level, "provisional": False}).level)
+        for change in ({"level": "긴급"}, {"level": "high"}, {"level": "낮음"}, {"rationale": ""}, {"provisional": "false"}):
+            with self.subTest(change=change), self.assertRaises(ValidationError):
+                ErrorPriority.model_validate({**base, **change})
+
+    def test_legacy_result_uses_explicit_provisional_medium_priority(self) -> None:
+        result = AnalysisResult.model_validate({
+            "summary": "legacy result", "root_causes": [], "recommended_fixes": [],
+            "validation_steps": [], "unknowns": [],
+        })
+        self.assertEqual("중간", result.error_priority.level)
+        self.assertTrue(result.error_priority.provisional)
+        self.assertIn("부족", result.error_priority.rationale)
+
     def test_request_rejects_traversal_and_out_of_context_line(self) -> None:
         with self.assertRaises(ValidationError):
             valid_request(source_path="../../etc/passwd")

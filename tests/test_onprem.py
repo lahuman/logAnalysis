@@ -113,4 +113,4 @@ class OnPremTransportTests(unittest.IsolatedAsyncioTestCase):
                 analyzer = OnPremAnalyzer(api_key=None, model="local", base_url=config.base_url, client=client)
                 with patch.dict("os.environ", {}, clear=True), patch.object(nim_smoke, "OnPremAnalyzer", return_value=analyzer):
                     report = await nim_smoke.run_smoke(config, Path(work))
-            self.assertIn("COMPLETED", report.read_text(encoding="utf-8"))
+            self.assertIn("처리 상태: 분석 완료", report.read_text(encoding="utf-8"))

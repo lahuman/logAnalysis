@@ -6,7 +6,7 @@ import unittest
 
 from log_analyzer.models import ErrorEvent
 from log_analyzer.parsers import GenericErrorParser, JavaErrorParser, parse_event
-from log_analyzer.parsers.java import normalize_java_class_name
+from log_analyzer.parsers.java import normalize_java_class_name, truncate_java_stack_trace
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "java"
@@ -27,6 +27,56 @@ def make_event(**overrides: object) -> ErrorEvent:
 
 
 class JavaErrorParserTests(unittest.TestCase):
+    def test_long_trace_keeps_deepest_cause_and_its_throw_site(self) -> None:
+        trace = (
+            "java.lang.RuntimeException: request failed\n"
+            + " at com.example.Outer.call(Outer.java:10)\n" * 30
+            + "Caused by: java.lang.IllegalStateException: wrapped\n"
+            + " at com.example.Middle.call(Middle.java:20)\n"
+            + "Caused by: java.sql.SQLException: connection refused\n"
+            + " at com.example.Database.connect(Database.java:30)\n"
+        )
+        parsed = JavaErrorParser(max_input_chars=300).parse(make_event(stack_trace=trace))
+
+        self.assertEqual("java.sql.SQLException", parsed.error_type)
+        self.assertEqual("connection refused", parsed.message)
+        self.assertEqual("com.example.Database", parsed.frames[0].class_name)
+        self.assertEqual(30, parsed.frames[0].line_number)
+        self.assertIn("stack_trace_truncated", parsed.parse_warnings)
+
+    def test_nested_suppressed_cause_does_not_replace_main_cause(self) -> None:
+        trace = (
+            "java.lang.RuntimeException: outer\n"
+            + "\tat com.example.Outer.call(Outer.java:10)\n" * 30
+            + "Caused by: java.sql.SQLException: connection refused\n"
+            "\tat com.example.Database.connect(Database.java:30)\n"
+            "\tSuppressed: java.io.IOException: close failed\n"
+            "\t\tSuppressed: java.lang.IllegalStateException: nested close\n"
+            "\tCaused by: java.lang.IllegalArgumentException: suppressed cause\n"
+            "\t\tat com.example.Resource.close(Resource.java:99)\n"
+        )
+        for maximum in (300, 1_000_000):
+            with self.subTest(maximum=maximum):
+                parsed = JavaErrorParser(max_input_chars=maximum).parse(make_event(stack_trace=trace))
+
+                self.assertEqual("java.sql.SQLException", parsed.error_type)
+                self.assertEqual("connection refused", parsed.message)
+                self.assertEqual(30, parsed.frames[0].line_number)
+
+    def test_trace_limit_keeps_cause_header_before_long_inner_frames(self) -> None:
+        trace = (
+            "java.lang.RuntimeException: outer\n"
+            "Caused by: java.sql.SQLException: connection refused\n"
+            "\tat com.example.Database.connect(Database.java:30)\n"
+            + "\tat com.example.Caller.call(Caller.java:50)\n" * 100
+        )
+        bounded = truncate_java_stack_trace(trace, 200)
+        self.assertLessEqual(len(bounded), 200)
+        parsed = JavaErrorParser().parse(make_event(stack_trace=bounded))
+        self.assertEqual("java.sql.SQLException", parsed.error_type)
+        self.assertEqual(30, parsed.frames[0].line_number)
+
+
     def test_parses_internet_derived_exception_varieties(self) -> None:
         cases = (
             ("null_pointer.txt", "java.lang.NullPointerException", "MyClass", 9),

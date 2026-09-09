@@ -81,12 +81,53 @@ class RecommendedFix(_StrictModel):
     risk: Literal["low", "medium", "high"]
 
 
+class ErrorPriority(_StrictModel):
+    level: Literal["높음", "중간", "낮음"]
+    rationale: str = Field(min_length=1, max_length=4_000)
+    impact: str = Field(min_length=1, max_length=4_000)
+    response_action: str = Field(min_length=1, max_length=4_000)
+    escalation_condition: str = Field(min_length=1, max_length=4_000)
+    provisional: bool
+
+    @model_validator(mode="after")
+    def validate_provisional_level(self) -> ErrorPriority:
+        if self.provisional and self.level == "낮음":
+            raise ValueError("insufficient impact evidence must not be classified as low priority")
+        return self
+
+    @classmethod
+    def unassessed(cls) -> ErrorPriority:
+        return cls(
+            level="중간",
+            rationale="오류 수준을 판단할 분석 근거가 부족하여 중간으로 잠정 분류했습니다.",
+            impact="실제 서비스 영향과 데이터 손상 여부가 확인되지 않았습니다.",
+            response_action="담당자를 지정하고 서비스 상태, 실패 범위, 데이터 정합성과 원인 로그를 확인하세요.",
+            escalation_condition="서비스 중단, 핵심 기능의 지속 실패, 데이터 손상 또는 보안 영향이 확인되면 높음으로 상향하세요.",
+            provisional=True,
+        )
+
+
 class AnalysisResult(_StrictModel):
     summary: str = Field(min_length=1, max_length=8_000)
+    error_priority: ErrorPriority = Field(default_factory=ErrorPriority.unassessed)
     root_causes: list[RootCause] = Field(max_length=20)
     recommended_fixes: list[RecommendedFix] = Field(max_length=20)
     validation_steps: list[str] = Field(max_length=50)
     unknowns: list[str] = Field(max_length=50)
+
+
+def analysis_result_schema() -> dict:
+    """Require classification in new LLM output while allowing older stored results."""
+    schema = AnalysisResult.model_json_schema()
+    schema["required"].append("error_priority")
+    return schema
+
+
+def parse_analysis_result(output_text: str) -> AnalysisResult:
+    result = AnalysisResult.model_validate_json(output_text)
+    if "error_priority" not in result.model_fields_set:
+        raise ValueError("new analysis output must include error_priority")
+    return result
 
 
 def validated_evidence(result: AnalysisResult, request: AnalysisRequest) -> AnalysisResult:

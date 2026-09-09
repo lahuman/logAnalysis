@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import contextlib
 import io
 import json
@@ -13,7 +14,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from log_analyzer import cli
 from log_analyzer.config import AppConfig
 from log_analyzer.errors import AlreadyRunningError, ConfigError
-from log_analyzer.pipeline import PipelineInfrastructureError
+from log_analyzer.pipeline import PipelineInfrastructureError, RunSummary
 
 
 class FakeLock:
@@ -192,9 +193,8 @@ class CliExecutionTests(unittest.IsolatedAsyncioTestCase):
             config = self.config(Path(directory)).model_copy(update={"openai": OpenAIConfig(
                 provider="onprem", model="local", base_url="https://llm.internal/v1", auth_required=False)})
             source = Mock(close=AsyncMock())
-            summary = Mock(has_failures=False)
+            summary = RunSummary(datetime.now(UTC), datetime.now(UTC), datetime.now(UTC))
             pipeline = Mock(run=AsyncMock(return_value=summary))
-            summary.to_dict.return_value = {}
             with (
                 patch.object(cli, "require_secret") as required,
                 patch.object(cli, "read_secret", return_value=None),
@@ -301,8 +301,13 @@ class CliExecutionTests(unittest.IsolatedAsyncioTestCase):
                 update={"openai": OpenAIConfig(provider="nvidia_nim", model="test-model", enable_thinking=False)}
             )
             source = Mock()
-            source.close = AsyncMock()
-            summary = Mock(has_failures=False)
+            output = io.StringIO()
+
+            async def close_source():
+                self.assertEqual("", output.getvalue())
+
+            source.close = AsyncMock(side_effect=close_source)
+            summary = RunSummary(datetime.now(UTC), datetime.now(UTC), datetime.now(UTC))
             pipeline = Mock(run=AsyncMock(return_value=summary))
             with (
                 patch.object(cli, "require_secret", return_value="nim-key") as secret,
@@ -315,12 +320,16 @@ class CliExecutionTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(cli, "ReportWriter", return_value=Mock()),
                 patch.object(cli, "AnalysisPipeline", return_value=pipeline) as pipeline_class,
                 patch.object(cli, "_emit"),
+                contextlib.redirect_stdout(output),
             ):
                 self.assertEqual(cli.EXIT_OK, await cli._execute("run", config))
             secret.assert_called_once_with("NVIDIA_API_KEY")
             openai.assert_not_called()
             self.assertFalse(nim.call_args.kwargs["enable_thinking"])
             self.assertEqual(config.openai.cache_analyzer_version("1"), pipeline_class.call_args.kwargs["analyzer_version"])
+            source.close.assert_awaited_once()
+            self.assertEqual(3, len(output.getvalue().strip().splitlines()))
+            self.assertIn("처리 완료: 리포트 0건", output.getvalue())
 
 
 if __name__ == "__main__":

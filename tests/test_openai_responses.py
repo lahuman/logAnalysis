@@ -40,20 +40,28 @@ def analysis_request(**changes: object) -> AnalysisRequest:
 def result_payload(*, evidence_line: int = 42, evidence_file: str | None = None) -> dict:
     path = evidence_file or "src/main/java/com/example/OrderService.java"
     return {
-        "summary": "The order lookup returned null.",
+        "summary": "주문 조회 결과가 null입니다.",
+        "error_priority": {
+            "level": "중간",
+            "rationale": "주문 조회 결과의 null 참조가 확인되지만 전체 장애 범위는 알 수 없습니다.",
+            "impact": "해당 요청은 실패할 수 있으며 다른 사용자와 데이터에 대한 영향은 확인이 필요합니다.",
+            "response_action": "실패 요청 범위를 확인하고 누락된 주문 처리와 회귀 테스트를 추가하세요.",
+            "escalation_condition": "핵심 주문 기능의 지속 실패 또는 데이터 손상이 확인되면 높음으로 상향하세요.",
+            "provisional": True,
+        },
         "root_causes": [
             {
-                "cause": "A nullable result was dereferenced.",
+                "cause": "null일 수 있는 조회 결과를 참조했습니다.",
                 "confidence": 0.9,
                 "evidence": [
-                    {"file": path, "line": evidence_line, "description": "Dereference"}
+                    {"file": path, "line": evidence_line, "description": "객체 참조 위치"}
                 ],
             }
         ],
         "recommended_fixes": [
-            {"description": "Handle the missing order.", "files": [path], "risk": "low"}
+            {"description": "조회한 주문이 없는 경우를 처리하세요.", "files": [path], "risk": "low"}
         ],
-        "validation_steps": ["Add a missing-order test."],
+        "validation_steps": ["주문이 없는 경우의 회귀 테스트를 추가하세요."],
         "unknowns": [],
     }
 
@@ -90,19 +98,39 @@ class OpenAIResponsesAnalyzerTests(unittest.IsolatedAsyncioTestCase):
             )
             result = await analyzer.analyze(analysis_request())
 
-        self.assertEqual("The order lookup returned null.", result.summary)
+        self.assertEqual("주문 조회 결과가 null입니다.", result.summary)
         self.assertEqual(1, len(captured))
         request = captured[0]
         self.assertEqual("/v1/responses", request.url.path)
         self.assertEqual("Bearer test-api-key", request.headers["Authorization"])
         body = json.loads(request.content)
         self.assertFalse(body["store"])
+        self.assertIn("Write every human-readable explanation in Korean", body["instructions"])
         self.assertEqual(3_000, body["max_output_tokens"])
         self.assertEqual("json_schema", body["text"]["format"]["type"])
         self.assertTrue(body["text"]["format"]["strict"])
+        schema = body["text"]["format"]["schema"]
+        self.assertIn("error_priority", schema["required"])
+        self.assertEqual(set(schema["properties"]), set(schema["required"]))
+        self.assertEqual("중간", result.error_priority.level)
         self.assertFalse(body["text"]["format"]["schema"]["additionalProperties"])
         self.assertNotIn("tools", body)
         self.assertNotIn("do-not-send", request.content.decode())
+
+    async def test_missing_priority_is_repaired_in_new_provider_output(self) -> None:
+        payload = result_payload()
+        payload.pop("error_priority")
+        responses = [payload, result_payload()]
+        captured = []
+
+        def handler(request):
+            captured.append(request)
+            return httpx.Response(200, json=response_for(responses.pop(0)))
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            result = await OpenAIResponsesAnalyzer(api_key="key", model="test", client=client).analyze(analysis_request())
+        self.assertEqual(2, len(captured))
+        self.assertEqual("중간", result.error_priority.level)
 
     async def test_scans_all_output_items_and_filters_unsupported_evidence(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

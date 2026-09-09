@@ -50,7 +50,7 @@ def smoke_request() -> AnalysisRequest:
         context_end_line=6,
         revision_source="repository_ref",
         git_reference="synthetic-fixture",
-        git_change_context="Synthetic test source only. No real Git history or deployment is supplied.",
+        git_change_context="합성 테스트 소스입니다. 실제 Git 변경 이력이나 배포 정보는 포함하지 않습니다.",
     )
 
 

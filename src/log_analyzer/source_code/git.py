@@ -12,6 +12,7 @@ from typing import Protocol
 from log_analyzer.errors import LogAnalyzerError
 from log_analyzer.models import ErrorEvent, ParsedError, SourceContext, StackFrame
 from log_analyzer.parsers.java import normalize_java_class_name
+from .java import enclosing_method_lines
 
 _COMMIT_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
 _PACKAGE_RE = re.compile(
@@ -125,6 +126,10 @@ class GitSourceResolver:
                 continue
             start = max(1, selected.line_number - self._context_lines)
             end = min(len(lines), selected.line_number + self._context_lines)
+            method_lines = enclosing_method_lines(source, selected.line_number)
+            if method_lines is not None:
+                start = min(start, method_lines[0])
+                end = max(end, method_lines[1])
             snippet = "\n".join(lines[start - 1 : end])
             change_context = ""
             if revision_source == "repository_ref":
@@ -188,7 +193,7 @@ class GitSourceResolver:
         )
         if blame.returncode == 0 and blame.stdout:
             sections.append(
-                "## git blame for failing line\n"
+                "## 오류 발생 줄의 Git blame\n"
                 + blame.stdout.decode("utf-8", errors="replace").strip()
             )
 
@@ -210,7 +215,7 @@ class GitSourceResolver:
         )
         if history.returncode == 0 and history.stdout:
             sections.append(
-                "## recent changes for source file\n"
+                "## 소스 파일의 최근 변경 이력\n"
                 + history.stdout.decode("utf-8", errors="replace").strip()
             )
         value = "\n\n".join(sections)

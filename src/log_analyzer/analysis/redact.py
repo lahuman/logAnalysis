@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 
 from ..errors import LogAnalyzerError
+from ..parsers.java import truncate_java_stack_trace
 from .models import AnalysisRequest, AnalysisResult
 
 
@@ -97,9 +98,11 @@ _REPLACEMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
-def _truncate(value: str, maximum: int) -> str:
+def _truncate(value: str, maximum: int, *, stack_trace: bool = False) -> str:
     if maximum < 32:
         raise RedactionError("redaction limits must be at least 32 characters")
+    if stack_trace:
+        return truncate_java_stack_trace(value, maximum)
     if len(value) <= maximum:
         return value
     marker = "\n[TRUNCATED]"
@@ -124,6 +127,13 @@ class SecretRedactor:
         """Return a redacted and size-bounded copy safe for serialization."""
 
         limits = self._limits
+        source_code = self.redact_text(request.source_code)
+        if limits.source_code_chars < 32:
+            raise RedactionError("redaction limits must be at least 32 characters")
+        if len(source_code) > limits.source_code_chars:
+            raise RedactionError(
+                "complete source context exceeds source_code_chars; refusing to truncate the method"
+            )
         warnings = tuple(
             _truncate(self.redact_text(value), limits.warning_chars)
             for value in request.parse_warnings[: limits.warning_count]
@@ -138,7 +148,8 @@ class SecretRedactor:
                 self.redact_text(request.message), limits.message_chars
             ),
             stack_trace=_truncate(
-                self.redact_text(request.stack_trace), limits.stack_trace_chars
+                self.redact_text(request.stack_trace), limits.stack_trace_chars,
+                stack_trace=True,
             ),
             parse_warnings=warnings,
             function_name=(
@@ -151,9 +162,7 @@ class SecretRedactor:
                 if request.class_name is not None
                 else None
             ),
-            source_code=_truncate(
-                self.redact_text(request.source_code), limits.source_code_chars
-            ),
+            source_code=source_code,
             git_reference=(
                 self.redact_text(request.git_reference)
                 if request.git_reference is not None

@@ -3,6 +3,7 @@
 from .models import (
     AnalysisRequest,
     AnalysisResult,
+    ErrorPriority,
     Evidence,
     RecommendedFix,
     RootCause,
@@ -25,6 +26,7 @@ from .onprem import OnPremAnalyzer
 __all__ = [
     "AnalysisRequest",
     "AnalysisResult",
+    "ErrorPriority",
     "AnalyzerError",
     "Evidence",
     "FakeIncidentAnalyzer",

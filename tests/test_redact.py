@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from log_analyzer.analysis.models import AnalysisRequest, AnalysisResult
-from log_analyzer.analysis.redact import RedactionLimits, SecretRedactor
+from log_analyzer.analysis.models import AnalysisRequest, AnalysisResult, ErrorPriority
+from log_analyzer.analysis.redact import RedactionError, RedactionLimits, SecretRedactor
 
 
 def request_with(**changes: object) -> AnalysisRequest:
@@ -95,7 +95,7 @@ class SecretRedactorTests(unittest.TestCase):
         request = request_with(
             message="password=hidden " + "m" * 100,
             stack_trace="Authorization: Bearer hidden-token " + "s" * 100,
-            source_code="api_key=sk-abcdefghijklmnop " + "c" * 100,
+            source_code="api_key=sk-abcdefghijklmnop " + "c" * 10,
             parse_warnings=("person@example.com " + "w" * 100, "discarded"),
         )
 
@@ -114,11 +114,22 @@ class SecretRedactorTests(unittest.TestCase):
         self.assertLessEqual(len(safe.stack_trace), limits.stack_trace_chars)
         self.assertLessEqual(len(safe.source_code), limits.source_code_chars)
         self.assertEqual(1, len(safe.parse_warnings))
-        self.assertIn("[TRUNCATED]", safe.source_code)
+        self.assertEqual("api_key=[REDACTED_SECRET] " + "c" * 10, safe.source_code)
+
+    def test_oversized_method_is_rejected_instead_of_silently_cut(self) -> None:
+        request = request_with(source_code="public void run() {\n" + "doWork();\n" * 100 + "}")
+        with self.assertRaisesRegex(RedactionError, "refusing to truncate the method"):
+            SecretRedactor(RedactionLimits(source_code_chars=60)).redact_request(request)
 
     def test_model_result_is_redacted_before_persistence(self) -> None:
         result = AnalysisResult(
             summary="password=model-secret",
+            error_priority=ErrorPriority.unassessed().model_copy(update={
+                "rationale": "password=priority-secret",
+                "impact": "password=impact-secret",
+                "response_action": "password=response-secret",
+                "escalation_condition": "password=escalation-secret",
+            }),
             root_causes=[],
             recommended_fixes=[],
             validation_steps=["contact person@example.com"],
@@ -129,6 +140,9 @@ class SecretRedactorTests(unittest.TestCase):
         serialized = safe.model_dump_json()
 
         self.assertNotIn("model-secret", serialized)
+        for secret in ("priority-secret", "impact-secret", "response-secret", "escalation-secret"):
+            self.assertNotIn(secret, serialized)
+        self.assertEqual("중간", safe.error_priority.level)
         self.assertNotIn("person@example.com", serialized)
         self.assertIn("[REDACTED_SECRET]", serialized)
 

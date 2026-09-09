@@ -31,6 +31,46 @@ _EXPLICIT_HEADER_RE = re.compile(
 _THREAD_PREFIX_RE = re.compile(r'^Exception in thread\s+"[^"]+"\s+')
 _FRAME_RE = re.compile(r"^at\s+(?P<call>[^\s(]+)\((?P<location>[^)]*)\)$")
 _OMITTED_RE = re.compile(r"^\.\.\.\s+(?P<count>[0-9]+)\s+more$")
+_TRUNCATION_MARKER = "\n[STACK_TRACE_TRUNCATED]"
+
+
+def truncate_java_stack_trace(text: str, maximum: int) -> str:
+    """Bound a trace, prioritizing the deepest main cause and its throw site."""
+    if maximum < 1:
+        raise ValueError("maximum must be positive")
+    if len(text) <= maximum:
+        return text
+
+    offset = 0
+    deepest_offset = 0
+    suppressed_indentation: int | None = None
+    for raw_line in text.splitlines(keepends=True):
+        stripped = raw_line.strip()
+        indentation = len(raw_line) - len(raw_line.lstrip(" \t"))
+        if stripped.startswith("Suppressed:"):
+            if suppressed_indentation is None:
+                suppressed_indentation = indentation
+            else:
+                suppressed_indentation = min(suppressed_indentation, indentation)
+        elif stripped.startswith("Caused by:") and (
+            suppressed_indentation is None or indentation < suppressed_indentation
+        ):
+            suppressed_indentation = None
+            if _parse_header(stripped[len("Caused by:") :].strip(), explicit=True):
+                deepest_offset = offset
+        offset += len(raw_line)
+
+    # Keep the beginning of the selected cause: the final frame is its caller,
+    # whereas the first frame identifies where the exception was thrown.
+    budget = maximum - len(_TRUNCATION_MARKER)
+    if budget < 1:
+        return text[deepest_offset : deepest_offset + maximum]
+    selected = text[deepest_offset:]
+    if len(selected) > budget:
+        selected = selected[:budget]
+        if "\n" in selected:
+            selected = selected.rsplit("\n", 1)[0]
+    return selected.rstrip() + _TRUNCATION_MARKER
 
 
 @dataclass
@@ -78,7 +118,9 @@ class JavaErrorParser:
         text = _event_text(event)
         warnings: list[str] = []
         if len(text) > self._max_input_chars:
-            text = text[: self._max_input_chars]
+            text = truncate_java_stack_trace(text, self._max_input_chars)
+            warnings.append("stack_trace_truncated")
+        elif _TRUNCATION_MARKER in text:
             warnings.append("stack_trace_truncated")
 
         sections: list[_ExceptionSection] = []
@@ -95,7 +137,10 @@ class JavaErrorParser:
             if stripped.startswith("Suppressed:"):
                 if _parse_header(stripped[len("Suppressed:") :].strip(), explicit=True):
                     suppressed_count += 1
-                suppressed_indentation = indentation
+                suppressed_indentation = (
+                    indentation if suppressed_indentation is None
+                    else min(suppressed_indentation, indentation)
+                )
                 continue
 
             if stripped.startswith("Caused by:"):

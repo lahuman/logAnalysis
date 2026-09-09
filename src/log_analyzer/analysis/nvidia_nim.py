@@ -11,7 +11,7 @@ from pathlib import Path
 import httpx
 from pydantic import ValidationError
 
-from .models import AnalysisRequest, AnalysisResult
+from .models import AnalysisRequest, AnalysisResult, analysis_result_schema, parse_analysis_result
 from .openai_responses import (
     InvalidResponseError,
     OpenAIResponsesAnalyzer,
@@ -63,7 +63,7 @@ class NvidiaNimAnalyzer(OpenAIResponsesAnalyzer):
         )
 
     def _payload(self, request: AnalysisRequest) -> dict[str, Any]:
-        schema = AnalysisResult.model_json_schema()
+        schema = analysis_result_schema()
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": [
@@ -126,7 +126,7 @@ class NvidiaNimAnalyzer(OpenAIResponsesAnalyzer):
         if not isinstance(content, str) or not content.strip():
             raise InvalidResponseError("NVIDIA NIM response had no text content")
         try:
-            return AnalysisResult.model_validate_json(content)
+            return parse_analysis_result(content)
         except (ValidationError, ValueError) as exc:
             raise _SchemaResponseError(
                 "NVIDIA NIM output failed AnalysisResult validation", content

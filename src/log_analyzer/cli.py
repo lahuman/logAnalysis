@@ -262,7 +262,7 @@ async def _execute(command: str, config: AppConfig) -> int:
         finally:
             restore_signal()
         _emit("info", "run_completed", summary=summary.to_dict())
-        return EXIT_PARTIAL if summary.has_failures else EXIT_OK
+        exit_status = EXIT_PARTIAL if summary.has_failures else EXIT_OK
     finally:
         active_error = sys.exception()
         cleanup_error: BaseException | None = None
@@ -283,6 +283,11 @@ async def _execute(command: str, config: AppConfig) -> int:
             raise PipelineInfrastructureError(
                 "runtime resources could not be closed"
             ) from cleanup_error
+
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    print("\n".join(summary.to_korean_summary(config.report.directory)), flush=True)
+    return exit_status
 
 
 async def _healthcheck_openai(config: AppConfig, api_key: str | None) -> None:

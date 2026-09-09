@@ -16,7 +16,7 @@ from log_analyzer import cli
 from log_analyzer.config import AppConfig, OracleSourceConfig, load_config
 from log_analyzer.errors import ConfigError
 from log_analyzer.models import ErrorQuery
-from log_analyzer.pipeline import AnalysisPipeline, PipelineInfrastructureError
+from log_analyzer.pipeline import AnalysisPipeline, PipelineInfrastructureError, RunSummary
 from log_analyzer.report import ReportWriter
 from log_analyzer.sources.oracle import OracleErrorSource, OracleSourceError
 from log_analyzer.storage import SQLiteStateStore
@@ -263,8 +263,7 @@ class OracleCliTests(unittest.IsolatedAsyncioTestCase):
         root = Path(__file__).resolve().parents[1]
         config = load_config(root / "config/oracle-onprem.toml.example")
         source = Mock(close=AsyncMock())
-        summary = Mock(has_failures=False)
-        summary.to_dict.return_value = {}
+        summary = RunSummary(NOW, NOW, NOW)
         pipeline = Mock(run=AsyncMock(return_value=summary))
         with (
             patch.object(cli, "require_secret", side_effect=lambda name: name + "-test") as required,

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 import unittest
 
 from log_analyzer.models import ErrorEvent, ParsedError, StackFrame
+from log_analyzer.parsers import JavaErrorParser
 from log_analyzer.source_code import GitSourceResolver, SourceResolutionError
 
 
@@ -128,6 +130,46 @@ class GitSourceResolverTests(unittest.TestCase):
         self.assertNotIn("uncommitted source", context.source_code)
         self.assertEqual(head_before, git(self.repository, "rev-parse", "HEAD"))
 
+    def test_resolves_deepest_cause_instead_of_outer_exception(self) -> None:
+        item = replace(event(self.commit), stack_trace=(
+            "java.lang.RuntimeException: outer\n"
+            "\tat com.example.order.Controller.call(Controller.java:10)\n"
+            "Caused by: java.lang.IllegalStateException: old committed source\n"
+            "\tat com.example.order.OrderService.save(OrderService.java:5)\n"
+        ))
+        selected = JavaErrorParser(("com.example.order",)).parse(item)
+        resolved = self.resolver().resolve(item, selected)
+
+        self.assertIsNotNone(resolved)
+        self.assertEqual(self.relative_source.as_posix(), resolved.source_path)
+        self.assertEqual(5, resolved.line_number)
+
+    def test_includes_entire_long_method_beyond_context_window(self) -> None:
+        method = (
+            "    @Deprecated\n"
+            "    public void save(\n"
+            "        String value\n"
+            "    ) throws IllegalStateException {\n"
+            + "        value = value.trim();\n" * 100
+            + '        throw new IllegalStateException("failed");\n'
+            + "        // cleanup } is part of this method\n" * 100
+            + "    }"
+        )
+        source = "package com.example.order;\npublic class OrderService {\n" + method + "\n}\n"
+        (self.repository / self.relative_source).write_text(source, encoding="utf-8")
+        git(self.repository, "add", self.relative_source.as_posix())
+        git(self.repository, "commit", "-m", "long method")
+        commit = git(self.repository, "rev-parse", "HEAD")
+        failure_line = next(i for i, line in enumerate(source.splitlines(), 1) if "throw new" in line)
+
+        resolved = self.resolver().resolve(event(commit), parsed(line_number=failure_line))
+
+        self.assertIsNotNone(resolved)
+        self.assertEqual(method, resolved.source_code)
+        self.assertEqual(3, resolved.context_start_line)
+        self.assertEqual(len(source.splitlines()) - 1, resolved.context_end_line)
+        self.assertEqual(failure_line, resolved.line_number)
+
     def test_missing_event_commit_uses_repository_head_and_collects_recent_changes(self) -> None:
         source = self.repository / self.relative_source
         source.write_text(
@@ -146,7 +188,7 @@ class GitSourceResolverTests(unittest.TestCase):
         self.assertEqual("repository_ref", context.revision_source)
         self.assertEqual("HEAD", context.git_reference)
         self.assertIn("current branch source", context.source_code)
-        self.assertIn("git blame for failing line", context.git_change_context)
+        self.assertIn("오류 발생 줄의 Git blame", context.git_change_context)
         self.assertIn("change failing operation", context.git_change_context)
 
     def test_resolved_commit_hint_keeps_fallback_revision_stable(self) -> None:

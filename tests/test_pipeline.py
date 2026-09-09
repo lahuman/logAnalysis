@@ -11,14 +11,17 @@ from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from log_analyzer.analysis.models import AnalysisRequest, AnalysisResult
+from log_analyzer.analysis.models import AnalysisRequest, AnalysisResult, ErrorPriority
 from log_analyzer.analysis.openai_responses import (
     GlobalAnalyzerError,
     InvalidResponseError,
     RetryableAnalyzerError,
 )
 from log_analyzer.models import ErrorEvent, ErrorPage, SourceContext
-from log_analyzer.pipeline import AnalysisPipeline, PipelineInfrastructureError
+from log_analyzer.analysis.redact import SecretRedactor
+from log_analyzer.parsers import JavaErrorParser
+from log_analyzer.fingerprint import make_fingerprint
+from log_analyzer.pipeline import AnalysisPipeline, PipelineInfrastructureError, RunSummary
 from log_analyzer.storage import JobStatus, SQLiteStateStore
 
 
@@ -139,7 +142,126 @@ class Writer:
         return self._output_dir / f"{event_id}.md"
 
 
+class RunSummaryTests(unittest.TestCase):
+    def test_empty_partial_and_interrupted_runs_have_exactly_three_lines(self) -> None:
+        for changes in ({}, {"interrupted": True}, {
+            "completed": 3, "no_source": 1, "duplicate_events": 2,
+            "priority_counts": {"높음": 1, "중간": 2, "낮음": 1},
+            "outstanding_retries": 2, "outstanding_permanent_failures": 1,
+            "report_cleanup_failures": 1,
+        }):
+            with self.subTest(changes=changes):
+                summary = RunSummary(NOW, NOW, NOW, **changes)
+                lines = summary.to_korean_summary(Path("reports\npassword=private-value"))
+                self.assertEqual(3, len("\n".join(lines).splitlines()))
+                self.assertNotIn("private-value", "\n".join(lines))
+                if summary.interrupted:
+                    self.assertTrue(lines[0].startswith("처리 중단:"))
+                elif summary.completed:
+                    self.assertIn("리포트 4건", lines[0])
+                    self.assertIn("중복 확인 2건", lines[0])
+                    self.assertIn("높음 1건 · 중간 2건 · 낮음 1건", lines[1])
+                    self.assertIn("즉시 대응", lines[1])
+                    self.assertIn("재시도 대기 2건 · 실패 1건 · 정리 실패 1건", lines[2])
+                else:
+                    self.assertIn("리포트 0건", lines[0])
+                    self.assertIn("분류된 리포트가 없습니다", lines[1])
+
+
 class PipelineTests(unittest.IsolatedAsyncioTestCase):
+    async def test_no_source_reports_count_as_provisional_medium(self) -> None:
+        analyzer = Analyzer()
+        summary = await self.pipeline(
+            PagedSource({None: ErrorPage((event(),), None)}), resolver=Resolver(), analyzer=analyzer,
+        ).run()
+        self.assertEqual(1, summary.no_source)
+        self.assertEqual(0, summary.completed)
+        self.assertEqual({"높음": 0, "중간": 1, "낮음": 0}, summary.priority_counts)
+        self.assertEqual([], analyzer.requests)
+        self.assertIn("소스 미확인 1건", summary.to_korean_summary(self.directory)[0])
+
+    async def test_priority_survives_cache_reuse_and_is_passed_to_report(self) -> None:
+        priority = ErrorPriority.unassessed().model_copy(update={"level": "높음"})
+        analysis = result().model_copy(update={"error_priority": priority})
+        analyzer = Analyzer([analysis])
+        writer = Writer(self.directory)
+        source = PagedSource({None: ErrorPage((event("priority-1"), event("priority-2")), None)})
+        with patch.object(writer, "write", wraps=writer.write) as write:
+            summary = await self.pipeline(source, analyzer=analyzer, writer=writer).run()
+
+        self.assertEqual(2, summary.completed)
+        self.assertEqual(1, summary.cache_hits)
+        self.assertEqual({"높음": 2, "중간": 0, "낮음": 0}, summary.priority_counts)
+        self.assertEqual(1, len(analyzer.requests))
+        self.assertEqual(2, write.call_count)
+        for call in write.call_args_list:
+            self.assertEqual("높음", call.args[1].error_priority.level)
+            self.assertEqual(priority.response_action, call.args[1].error_priority.response_action)
+
+    async def test_full_method_is_forwarded_without_using_old_partial_source_cache(self) -> None:
+        item = event()
+        parsed = JavaErrorParser(("com.example.order",)).parse(item)
+        self.store.save_analysis_cache(
+            fingerprint=make_fingerprint(item, parsed), git_commit=COMMIT,
+            model="test-model", prompt_version="prompt-1", analyzer_version="analyzer-1:full-method-v1",
+            analysis_json=result().model_dump_json(), now=NOW,
+        )
+        method = "public void submit() {\n" + "    doWork();\n" * 100 + "}"
+        resolver = Resolver(context(source_code=method, context_start_line=1, context_end_line=102))
+        analyzer = Analyzer()
+        summary = await self.pipeline(
+            PagedSource({None: ErrorPage((item,), None)}), resolver=resolver, analyzer=analyzer,
+        ).run()
+
+        self.assertEqual(1, summary.completed)
+        self.assertEqual(0, summary.cache_hits)
+        self.assertEqual(method, analyzer.requests[0].source_code)
+        self.assertEqual(1, analyzer.requests[0].context_start_line)
+        self.assertEqual(102, analyzer.requests[0].context_end_line)
+
+    async def test_oversized_source_is_not_sent_as_a_partial_method(self) -> None:
+        for size in (60_001, 100_001):
+            with self.subTest(size=size):
+                analyzer = Analyzer()
+                source = PagedSource({None: ErrorPage((event(f"oversize-{size}"),), None)})
+                with contextlib.redirect_stderr(io.StringIO()):
+                    summary = await self.pipeline(
+                        source, resolver=Resolver(context(source_code="x" * size)), analyzer=analyzer,
+                    ).run()
+                self.assertEqual(0, summary.completed)
+                self.assertEqual([], analyzer.requests)
+                self.assertEqual(JobStatus.PERMANENT_FAILURE, self.store.get_job("logs", f"oversize-{size}").status)
+
+    async def test_long_trace_sends_deepest_cause_to_resolver_and_analysis(self) -> None:
+        for outer_frames in (400, 1000):
+            with self.subTest(outer_frames=outer_frames):
+                trace = (
+                    "java.lang.RuntimeException: request failed\n"
+                    + "\tat com.example.order.Controller.call(Controller.java:10)\n" * outer_frames
+                    + "Caused by: java.sql.SQLException: connection refused\n"
+                    + "\tat com.example.order.OrderService.submit(OrderService.java:42)\n"
+                )
+                item = event(
+                    f"deepest-{outer_frames}", stack_trace=trace,
+                    environment=f"test-{outer_frames}",
+                )
+                source = PagedSource({None: ErrorPage((item,), None)})
+                analyzer = Analyzer()
+                resolver = Resolver(context())
+                with patch.object(resolver, "resolve", wraps=resolver.resolve) as resolve:
+                    summary = await self.pipeline(source, resolver=resolver, analyzer=analyzer).run()
+                self.assertEqual(1, summary.completed)
+                selected = resolve.call_args.args[1]
+                self.assertEqual("java.sql.SQLException", selected.error_type)
+                self.assertEqual(42, selected.frames[0].line_number)
+                request = SecretRedactor().redact_request(analyzer.requests[0])
+                self.assertEqual("java.sql.SQLException", request.error_type)
+                self.assertEqual("connection refused", request.message)
+                self.assertLessEqual(len(request.stack_trace), 20_000)
+                reparsed = JavaErrorParser().parse(event(stack_trace=request.stack_trace))
+                self.assertEqual("java.sql.SQLException", reparsed.error_type)
+                self.assertEqual(42, reparsed.frames[0].line_number)
+
     async def test_retry_and_permanent_failures_are_logged_and_stored_with_location(self) -> None:
         for index, failure in enumerate((RetryableAnalyzerError, InvalidResponseError)):
             event_id = f"diagnostic-{index}"
@@ -535,7 +657,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
             git_commit=COMMIT,
             model="test-model",
             prompt_version="prompt-1",
-            analyzer_version="analyzer-1",
+            analyzer_version="analyzer-1:full-method-v1:priority-v1:ko-v1",
         )
         self.assertIsNotNone(cached)
         self.assertNotIn("model-secret", cached.analysis_json)

@@ -14,7 +14,7 @@ from log_analyzer import cli
 from log_analyzer.config import FileSourceConfig, load_config
 from log_analyzer.models import ErrorQuery
 from log_analyzer.parsers import JavaErrorParser
-from log_analyzer.pipeline import AnalysisPipeline, PipelineInfrastructureError
+from log_analyzer.pipeline import AnalysisPipeline, PipelineInfrastructureError, RunSummary
 from log_analyzer.report import ReportWriter
 from log_analyzer.sources.file import FileErrorSource, FileSourceError
 from log_analyzer.storage import SQLiteStateStore
@@ -63,6 +63,19 @@ class FileSourceTests(unittest.IsolatedAsyncioTestCase):
         parsed = JavaErrorParser(("com.example.order",)).parse(event)
         self.assertTrue(any(f.line_number == 30 for f in parsed.frames))
         self.assertIn("java.lang.NullPointerException", str(parsed.cause_chain))
+
+    async def test_long_record_keeps_root_cause_after_input_limit(self):
+        trace = RECORD.replace("Caused by:", "\tat com.example.Outer.call(Outer.java:10)\n" * 3000 + "Caused by:")
+        self.path.write_text(trace, encoding="utf-8")
+
+        page = await self.source().fetch(self.query)
+        parsed = JavaErrorParser(("com.example.order",)).parse(page.events[0])
+
+        self.assertLessEqual(len(page.events[0].stack_trace), 100_000)
+        self.assertEqual("java.lang.NullPointerException", parsed.error_type)
+        self.assertEqual("customer missing", parsed.message)
+        self.assertEqual(30, parsed.frames[0].line_number)
+        self.assertIn("stack_trace_truncated", parsed.parse_warnings)
 
     async def test_private_snapshot_excludes_appends_and_replacement_until_next_run(self):
         source = self.source()
@@ -177,8 +190,7 @@ class FileCliTests(unittest.IsolatedAsyncioTestCase):
     async def test_file_selection_does_not_require_database_credentials(self):
         config = load_config(Path(__file__).resolve().parents[1] / 'config/file-onprem.toml.example')
         source = Mock(close=AsyncMock())
-        summary = Mock(has_failures=False)
-        summary.to_dict.return_value = {}
+        summary = RunSummary(NOW, NOW, NOW)
         with (patch.object(cli,'require_secret',return_value='llm-test') as required,
               patch.object(cli,'read_secret') as optional,
               patch.object(cli,'SQLiteStateStore'), patch.object(cli,'FileErrorSource',return_value=source) as local,

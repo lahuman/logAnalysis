@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from ..config import FileSourceConfig
 from ..models import ErrorEvent, ErrorPage, ErrorQuery
+from ..parsers.java import truncate_java_stack_trace
 
 
 class FileSourceError(RuntimeError):
@@ -109,7 +110,8 @@ class FileErrorSource:
         return ErrorEvent(
             source_name=self._config.name, event_id=identity, occurred_at=timestamp,
             service=self._config.service, severity=severity, message=message[:self._max_text],
-            raw_log=text[:self._max_text], stack_trace=text[:self._max_text], language_hint="java",
+            raw_log=text[:self._max_text],
+            stack_trace=truncate_java_stack_trace(text, self._max_text), language_hint="java",
         )
 
     async def fetch(self, query: ErrorQuery, cursor: str | None = None) -> ErrorPage:

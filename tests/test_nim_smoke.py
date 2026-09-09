@@ -40,7 +40,9 @@ class NimSmokeTests(unittest.IsolatedAsyncioTestCase):
                 ):
                     report = await nim_smoke.run_smoke(config, Path(directory) / "reports", credentials)
             contents = report.read_text(encoding="utf-8")
-            self.assertIn("COMPLETED", contents)
+            self.assertIn("처리 상태: 분석 완료", contents)
+            self.assertIn("**오류 수준: 중간**", contents)
+            self.assertIn("권장 처리 시점:", contents)
             self.assertIn("OrderService.java:4", contents)
             self.assertIn("synthetic", contents)
             self.assertNotIn("test-secret", contents)
