@@ -17,6 +17,7 @@ import tomllib
 import urllib.request
 
 REPO = Path(__file__).resolve().parents[2]
+EDITABLE_PATHS = ("src/", "tests/", "templates/", "config/config.toml")
 ASSETS = {
     "python": {
         "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20240224/cpython-3.11.8%2B20240224-x86_64-unknown-linux-gnu-install_only.tar.gz",
@@ -39,6 +40,20 @@ ASSETS = {
 def sha256(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def bundle_files(root: Path) -> dict[str, str]:
+    files = {}
+    for path in sorted(root.rglob("*")):
+        name = path.relative_to(root).as_posix()
+        if any(name == editable or (editable.endswith("/") and name.startswith(editable))
+               for editable in EDITABLE_PATHS):
+            continue
+        if path.is_symlink():
+            files[name] = "symlink:" + os.readlink(path)
+        elif path.is_file():
+            files[name] = sha256(path)
+    return files
 
 
 def download(asset: dict, cache: Path) -> Path:
@@ -187,17 +202,9 @@ def build(output: Path, cache: Path) -> Path:
         compatibility = verify_elf_compatibility(root)
         manifest = {"application_version": version, "python": "3.11.8", "target": "rhel8-x86_64",
                     "minimum_glibc": "2.28", "elf_compatibility": compatibility,
-                    "editable_paths": ["src/", "templates/", "config/config.toml"],
+                    "editable_paths": list(EDITABLE_PATHS),
                     "builder": {"os": release, "glibc": platform.libc_ver()},
-                    "archives": ASSETS, "wheels": wheels, "files": {}}
-        for path in sorted(root.rglob("*")):
-            name = path.relative_to(root).as_posix()
-            if name == "config/config.toml" or name.startswith(("src/", "templates/")):
-                continue  # Application source, report templates and settings are operator-editable.
-            if path.is_symlink():
-                manifest["files"][name] = "symlink:" + os.readlink(path)
-            elif path.is_file():
-                manifest["files"][name] = sha256(path)
+                    "archives": ASSETS, "wheels": wheels, "files": bundle_files(root)}
         (root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         run(root / "log-analyzer", "doctor", cwd=root)
         with tarfile.open(archive, "w:gz", compresslevel=6) as stream:

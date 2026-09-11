@@ -62,6 +62,8 @@ class FileErrorSource:
             raise
 
     def _record(self) -> ErrorEvent | None:
+        if self._config.format == "nexus":
+            return self._nexus_record()
         stream = self._snapshot
         assert stream is not None
         start = stream.tell()
@@ -112,6 +114,76 @@ class FileErrorSource:
             service=self._config.service, severity=severity, message=message[:self._max_text],
             raw_log=text[:self._max_text],
             stack_trace=truncate_java_stack_trace(text, self._max_text), language_hint="java",
+        )
+
+    def _nexus_record(self) -> ErrorEvent | None:
+        stream = self._snapshot
+        assert stream is not None
+        raw = bytearray()
+        start = stream.tell()
+        while True:
+            position = stream.tell()
+            line = stream.readline(self._config.max_record_bytes + 1)
+            if not line:
+                break
+            if len(line) > self._config.max_record_bytes:
+                raise FileSourceError(f"log line exceeds max_record_bytes at byte {position}")
+            text = line.decode(self._config.encoding)
+            if position == 0:
+                text = text.removeprefix("\ufeff")
+            is_start = re.match(r"^Server Instance\s*:", text) is not None
+            if raw and (is_start or text.strip() == "---"):
+                stream.seek(position)
+                break
+            if not raw:
+                if not text.strip() or text.strip() == "---":
+                    continue
+                if not is_start:
+                    raise FileSourceError(f"expected Nexus Server Instance header at byte {position}")
+                start = position
+            raw.extend(line)
+            if len(raw) > self._config.max_record_bytes:
+                raise FileSourceError(f"log record exceeds max_record_bytes at byte {start}")
+        if not raw:
+            return None
+
+        text = raw.decode(self._config.encoding).removeprefix("\ufeff")
+        fields: dict[str, str] = {}
+        key = None
+        for line in text.splitlines():
+            match = re.match(r"^(Server Instance|Exception [A-Za-z][A-Za-z0-9 ]*)[ \t]*:[ \t]*(.*)$", line)
+            if match:
+                key = match.group(1).strip()
+                if key in fields:
+                    raise FileSourceError(f"duplicate Nexus field {key} at byte {start}")
+                fields[key] = match.group(2)
+            elif key is not None:
+                fields[key] += "\n" + line
+        fields = {key: value.strip() for key, value in fields.items()}
+        for required in ("Server Instance", "Exception Time", "Exception Message", "Exception StackTrace"):
+            if not fields.get(required):
+                raise FileSourceError(f"missing Nexus field {required} at byte {start}")
+        try:
+            timestamp = datetime.fromisoformat(fields["Exception Time"])
+            if timestamp.utcoffset() is None:
+                timestamp = timestamp.replace(tzinfo=self._timezone)
+            timestamp = timestamp.astimezone(UTC)
+        except ValueError:
+            raise FileSourceError(f"invalid Nexus Exception Time at byte {start}") from None
+        identity = hashlib.sha256(str(start).encode("ascii") + b"\0" + raw).hexdigest()
+        attributes = {
+            name: fields[field][:self._max_text]
+            for name, field in (("server_instance", "Server Instance"), ("transaction_id", "Exception TxID"),
+                                ("exception_code", "Exception Code"), ("screen_id", "Exception Screen ID"),
+                                ("reported_root_cause", "Exception RootCause"), ("extra_root_cause", "Exception ExtraRootCause"))
+            if fields.get(field)
+        }
+        return ErrorEvent(
+            source_name=self._config.name, event_id=identity, occurred_at=timestamp,
+            service=self._config.service, severity="ERROR", message=fields["Exception Message"][:self._max_text],
+            raw_log=text[:self._max_text],
+            stack_trace=truncate_java_stack_trace(fields["Exception StackTrace"].replace("\u00a0", " "), self._max_text),
+            language_hint="java", trace_id=fields.get("Exception UUID") or None, attributes=attributes,
         )
 
     async def fetch(self, query: ErrorQuery, cursor: str | None = None) -> ErrorPage:

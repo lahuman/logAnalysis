@@ -8,6 +8,8 @@ severities = ["ERROR", "FATAL"]
 
 [error_source]
 type = "file"
+# Server Instance / Exception Time 형식의 내부 로그는 "nexus"로 변경합니다.
+format = "standard"
 name = "local-order-logs"
 path = "data/input/application.log"
 service = "order_api"

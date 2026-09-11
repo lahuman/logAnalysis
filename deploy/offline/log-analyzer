@@ -10,4 +10,28 @@ export PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1
 export CREDENTIALS_DIRECTORY="$ROOT/config/credentials"
 export PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
-exec "${LOG_ANALYZER_PYTHON:-$ROOT/runtime/python/bin/python3.11}" -I -B "$ROOT/launch.py" "$@"
+
+# These checks must work even when Python cannot start.
+startup_failure() {
+    printf 'offline_preflight_failed: stage=bootstrap\npath: %s\nreason: %s\nhint: %s\n' "$1" "$2" "$3" >&2
+    exit 2
+}
+
+LA_PYTHON="${LOG_ANALYZER_PYTHON:-$ROOT/runtime/python/bin/python3.11}"
+case "$LA_PYTHON" in
+    */*) ;;
+    *)
+        LA_RESOLVED_PYTHON=$(command -v "$LA_PYTHON") || startup_failure "$LA_PYTHON" "Python command was not found" "Check LOG_ANALYZER_PYTHON or use the bundled runtime."
+        LA_PYTHON="$LA_RESOLVED_PYTHON"
+        ;;
+esac
+if [ ! -f "$LA_PYTHON" ]; then
+    startup_failure "$LA_PYTHON" "Python executable is missing, inaccessible or a broken symlink" "Check parent directory access and the symlink target; restore runtime/python/ from the matching archive."
+fi
+if [ ! -x "$LA_PYTHON" ]; then
+    startup_failure "$LA_PYTHON" "Python executable cannot be executed by this account" "Check parent directory access, execute permission, noexec mounts and SELinux policy."
+fi
+if [ ! -f "$ROOT/launch.py" ] || [ ! -r "$ROOT/launch.py" ]; then
+    startup_failure "$ROOT/launch.py" "Launcher is missing or unreadable" "Check read permission and restore launch.py from the matching archive."
+fi
+exec "$LA_PYTHON" -I -B "$ROOT/launch.py" "$@"

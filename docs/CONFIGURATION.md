@@ -10,6 +10,8 @@
 생략하면 기존 설정과 같이 Elasticsearch입니다. 0.4.0 폐쇄망 배포본은 `file` 예제를 기본 설정으로 복사합니다.
 [파일 입력 안내](LOCAL_FILES.md)와 [file-onprem.toml.example](../config/file-onprem.toml.example)을 참고하세요.
 `path`, `service`, `encoding`, `timestamp_timezone`을 설정하며 `service`는 `services`에 정의된 이름이어야 합니다.
+`format` 기본값은 `standard`이며, `Server Instance`·`Exception Time`·`Exception StackTrace`로
+구성된 내부 예외 보고서는 `format = "nexus"`로 원본을 직접 읽습니다.
 기본 `filter_time_window = false`는 과거 파일까지 전체 조회합니다.
 
 ## LLM 선택

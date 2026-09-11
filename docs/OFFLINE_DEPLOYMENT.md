@@ -29,10 +29,13 @@ cd log-analyzer-0.5.0
 ./log-analyzer doctor
 ```
 
-`offline_doctor_succeeded`가 나오면 Python 버전, 필수 라이브러리, Git, SQLite,
+옵션 없는 `doctor`에서 `offline_doctor_succeeded`가 나오면 Python 버전, 필수 라이브러리, Git, SQLite,
 파일 쓰기·잠금, 런타임·라이브러리 체크섬 및 수정 소스 문법 검사가 통과한 것입니다. **외부/내부 네트워크 모두
 사용하지 않는 검사**이므로 LLM이나 ES/Oracle 설정 전에도 실행할 수 있습니다.
-`src/`, `templates/`, 운영 설정은 직접 수정할 수 있습니다. [소스 수정 안내](OFFLINE_DEVELOPMENT.md)를 참고하세요.
+개선된 빌더로 생성한 배포본은 `src/`, `tests/`, `templates/`, 운영 설정을 직접 수정할 수 있습니다.
+`doctor --scope source|runtime|all`과 `test --pattern 'test_file_source.py'`도 지원합니다.
+부분 검사의 성공은 해당 `scope`에만 적용됩니다. 기존 압축파일의 지원 범위와 반영 절차는
+[소스 수정 안내](OFFLINE_DEVELOPMENT.md)를 참고하세요.
 `manifest.json`에는 고정 파일 체크섬, Python 배포 출처, 의존성 버전·다운로드 URL이 들어 있습니다.
 
 서버에 Python 3.11.8이 이미 설치되어 있어도 기본값은 동봉된 런타임입니다.
@@ -138,6 +141,9 @@ partial/shallow clone은 필요한 커밋을 누락할 수 있으므로 사용�
 | 명령 | 확인하는 내용 | 통신 |
 |---|---|---|
 | `doctor` | Python·Git·라이브러리·파일 무결성·SQLite·잠금 | 없음 |
+| `doctor --scope source` | 소스·테스트 문법, 별도 프로세스의 애플리케이션 import | 없음 |
+| `doctor --scope runtime` | 애플리케이션 소스와 테스트를 검사하지 않고 실행환경 점검 | 없음 |
+| `test --pattern 'test_file_source.py'` | 전체 사전 검사 후 해당 파일의 테스트 실행 | 테스트 구현·통합 테스트 환경 변수에 따름 |
 | `check-config` | 설정 형식, onprem 선택, 모델 예시 값 교체 | 없음 |
 | `smoke` | 합성 Java 오류 한 건을 분석하고 `data/smoke-reports/`에 저장 | 설정된 내부 LLM만 |
 | `healthcheck` | ES/Oracle·Git·SQLite와 LLM 모델 목록 확인; 추론은 하지 않음 | 내부 ES/Oracle·LLM |
@@ -207,6 +213,53 @@ NIM의 `guided_json`을 명시적으로 선택할 수 있습니다. 지원하지
 | HTTP 400/422 | 모델 ID, JSON 출력 형식, thinking 옵션·토큰 상한 확인 |
 | 모델 목록에 없음 | `/v1/models`의 served model ID를 정확히 입력 |
 | `no_source` | 서비스 이름·패키지·branch·반입 Git의 커밋 이력 확인 |
+
+### 오류 출력 읽기
+
+개선된 실행기는 실패 시 표준 오류(stderr)에 `offline_preflight_failed`를 출력하고
+종료 코드 `2`를 반환합니다. Python 실행 이후의 오류는 JSON이며, 예를 들어 동봉
+라이브러리가 누락되면 다음 정보를 표시합니다. 아래는 주요 필드만 발췌한 예시입니다.
+
+```json
+{
+  "event": "offline_preflight_failed",
+  "command": "doctor",
+  "error_type": "FileNotFoundError",
+  "stage": "integrity",
+  "operation": "read",
+  "path": "/srv/log-analyzer-0.5.0/app/example.py",
+  "errno": 2,
+  "reason": "required file or directory was not found",
+  "hint": "Check the path and symlink target; restore missing bundle files from the matching archive."
+}
+```
+
+| 필드 | 확인할 내용 |
+|---|---|
+| `stage` | `manifest`: 검사 목록 읽기, `integrity`: 파일 무결성, `sources`: 소스 문법, `imports`: 모듈 로딩, `git`: Git 실행, `data`·`sqlite`·`lock`: 쓰기와 잠금. 별도 단계가 없으면 실행한 명령 이름 |
+| `scope` | `doctor`에서 요청한 `all`·`source`·`runtime` 범위; 성공 JSON에도 표시 |
+| `errors` / `error_count` | 소스·테스트 문법 등 검사에서 수집한 파일별 오류와 개수 |
+| `operation` | 실패한 읽기·쓰기·실행·import·잠금 작업 |
+| `path` / `module` | 문제가 된 파일 경로 또는 Python 모듈 이름; 확인 가능한 경우 표시 |
+| `errno` / `os_error` | OS 오류 번호와 해당 번호의 표준 설명 |
+| `location` / `line` | 예외가 발생한 파일·함수·줄 번호 또는 문법 오류 위치 |
+| `hint` | 파일 복원, 권한, 실행환경 등 확인할 조치 |
+| `bundle_root` / `python` | 실제 실행한 배포 디렉터리와 Python 경로 |
+
+Python 실행파일이 없거나 실행 불가로 판별되는 경우, 또는 `launch.py`가 없거나 읽을 수 없는
+경우에는 Python 없이 동작하는 셸 검사에서 `stage=bootstrap`, 경로, 이유, 조치 안내를
+**일반 텍스트**로 출력합니다. 실행파일 형식·동적 로더 오류 등 실제 `exec` 단계에서 발생하는
+실패는 OS/셸 메시지가 나올 수 있습니다. `./log-analyzer` 자체를 실행할 권한이 없으면
+이 검사도 시작되지 않으므로 셸의 `Permission denied`와 파일 권한을 먼저 확인하세요.
+
+설정값·소스 내용·지역 변수·원본 예외 메시지·하위 프로세스 출력은 실행기의 JSON 진단에 포함하지 않습니다.
+오류 경로와 모듈명 등 메타데이터를 중심으로 확인하세요. `test`의 unittest 출력은 별도이며,
+테스트 실패 시 일반 traceback과 assertion 메시지를 표시합니다.
+`tests/`는 새 배포본에서 수정 허용 대상으로 바뀌지만 `app/`·`runtime/`·실행기의 무결성과 Python 버전 검사는 유지합니다.
+
+이 개선은 저장소의 `deploy/offline/launch.py`와 `deploy/offline/log-analyzer`에 적용되어 있습니다.
+기존 배포 압축파일에는 자동 반영되지 않습니다. 반입본에 적용하려면 변경을 포함해 배포본을
+다시 생성하세요. 기존 배포본의 실행기만 덮어쓰면 `manifest.json`의 체크섬과 달라질 수 있습니다.
 
 ## 배포 담당자: 인터넷망에서 압축파일 만들기
 

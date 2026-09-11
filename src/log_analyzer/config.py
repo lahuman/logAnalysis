@@ -166,6 +166,7 @@ class OracleSourceConfig(_ConfigModel):
 
 class FileSourceConfig(_ConfigModel):
     type: Literal["file"]
+    format: Literal["standard", "nexus"] = "standard"
     name: str = "local-file-logs"
     path: Path
     service: str

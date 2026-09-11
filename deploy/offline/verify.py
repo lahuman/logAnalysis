@@ -74,8 +74,8 @@ def verify(archive: Path) -> None:
         environment["HTTP_PROXY"] = "http://external-proxy.invalid:8888"
         environment["PYTHONPATH"] = "/nonexistent"
 
-        def launch(command, expected_code=0):
-            result = subprocess.run([str(root / "log-analyzer"), command], cwd=parent, env=environment,
+        def launch(command, expected_code=0, *options):
+            result = subprocess.run([str(root / "log-analyzer"), command, *options], cwd=parent, env=environment,
                                     text=True, capture_output=True, timeout=45)
             if result.returncode != expected_code:
                 raise AssertionError(result.stdout + result.stderr)
@@ -220,15 +220,27 @@ def verify(archive: Path) -> None:
         assert '"application": "editable-check"' in launch("doctor")
         module.write_text(original_module + "\ndef invalid(:\n")
         assert "Python syntax error" in launch("doctor", 2)
+        assert '"scope": "runtime"' in launch("doctor", 0, "--scope", "runtime")
+        assert "Python syntax error" in launch("doctor", 2, "--scope", "source")
         module.write_text(original_module)
+        test_module = root / "tests/test_offline_editable_probe.py"
+        test_module.write_text("import unittest\nclass EditableProbe(unittest.TestCase):\n    def test_edit(self):\n        self.assertEqual(1, 1)\n")
+        assert '"scope": "source"' in launch("doctor", 0, "--scope", "source")
+        assert "Ran 1 test" in launch("test", 0, "--pattern", test_module.name)
+        test_module.write_text(test_module.read_text().replace("assertEqual(1, 1)", "assertEqual(1, 2)"))
+        assert "FAILED (failures=1)" in launch("test", 1, "--pattern", test_module.name)
+        test_module.unlink()
+        assert "no tests matched" in launch("test", 2, "--pattern", test_module.name)
         assert "Ran " in launch("test")
         dependency = root / "app/certifi/__init__.py"
         dependency.write_text(dependency.read_text() + "\n# integrity test\n")
         assert "bundle file mismatch" in launch("doctor", 2)
+        assert "bundle file mismatch" in launch("doctor", 2, "--scope", "runtime")
         print(json.dumps({"event": "offline_archive_verified", "external_network": False,
                           "relocated_path_with_spaces": True, "synthetic_llm_calls": len(SyntheticLLM.calls),
                           "bundled_git": True, "custom_ca_tls": True, "local_file_cli_replay_append": True,
                           "editable_source": True, "source_syntax_check": True, "bundled_tests": True,
+                          "editable_tests": True, "scoped_doctor": True, "selected_tests": True,
                           "tamper_detection": True, "sha256": digest}))
 
 

@@ -1,6 +1,25 @@
 # 구현 및 검증 현황
 
-기준일: 2026-09-09. 현재 버전은 `0.5.0`이다. 깊은 원인 보존, 메소드 전체 분석,
+기준일: 2026-09-11. 현재 버전은 `0.5.0`이다. 내부 Nexus 예외 보고서를
+`error_source.format = "nexus"`로 원본에서 직접 읽도록 추가했다. 여러 줄 메시지,
+대괄호 형식의 예외 체인, 생략 프레임 복원과 붙여넣기 스택 링크를 처리한다.
+Windows / Python 3.11.8 전체 테스트 **228개 중 221 통과·7 제외**,
+수정한 Python 파일 문법·예시 TOML·`git diff --check` 검사를 통과했다.
+개발 Linux 서버의 동봉 Python 3.11.8로 실제 첨부 원본 2개와 합본을 읽어 각각 1·1·2건,
+파싱 경고 없음, 원본 SHA-256 일치와 재실행 첫 이벤트 ID 일치를 확인했다.
+이번 실서버 검증은 파일 읽기·Java 파싱까지이며 실제 Git 소스 조회와 LLM 추론은 수행하지 않았다.
+원본 로그와 파싱 산출물은 Git 추적 대상에 포함하지 않았다. [내부 로그 설정](LOCAL_FILES.md)을 참고한다.
+
+이전 2026-09-10 검증에서는 폐쇄망 실행기 오류 진단과
+`tests/` 수정 허용·단계별 `doctor`·파일명 패턴 테스트 실행을 추가했다.
+Windows / Python 3.11.8 전체 테스트 **221개 중 214 통과·7 제외**,
+수정한 Python 파일 문법 검사와 `git diff --check`를 통과했다.
+현재 실제 소스와 테스트를 임시 배포 구조로 복사해 `doctor --scope source` 성공도 확인했다.
+제외 항목은 실제 Oracle 1개·ES 3개·POSIX 잠금 2개·POSIX 실행 권한 1개다.
+Linux 런타임 경계는 단위 테스트에서 대체했으며 RHEL 실환경과 배포 압축파일 재빌드는 이번에 검증하지 않았다.
+새 옵션과 기존 배포본 반영 절차는 [폐쇄망 소스 수정 안내](OFFLINE_DEVELOPMENT.md)에 정리했다.
+
+이전 2026-09-09 검증에서는 깊은 원인 보존, 메소드 전체 분석,
 오류 수준 3단계와 한글 리포트·세 줄 요약까지 포함해 Windows / Python 3.11.8에서
 193개 중 187 통과·6 제외를 확인했다. compileall·pip check·diff check도 통과했다.
 변경 파일, 검증 범위, 기존 데이터 적용과 제한은 [오류 분석 개선 작업 기록](ANALYSIS_IMPROVEMENTS.md)에 정리했다.
@@ -41,6 +60,8 @@
 
 | 시점·환경 | 실행 결과 | 제외 또는 제한 |
 |---|---|---|
+| 2026-09-11 Nexus 원본 입력 / Windows Python 3.11.8 및 개발 Linux Python 3.11.8 | 전체 228개 중 221 통과·7 제외; 서버에서 원본 2개·합본 직접 파싱과 체크섬 확인 | 실제 Git 소스 조회·LLM 추론·배포 압축파일 재빌드 미실행; ES·Oracle·POSIX 관련 7개 제외 |
+| 2026-09-10 폐쇄망 개발 지원 / Windows Python 3.11.8 | 221개 실행, 214 통과, 7 제외; 실제 소스 `doctor --scope source`·Python 문법·diff check 통과 | ES 3개·Oracle 1개·POSIX 잠금 2개·POSIX 실행 권한 1개 제외; RHEL 실환경과 압축파일 재빌드 미검증 |
 | 2026-09-09 분석·한글 리포트 개선 / Windows Python 3.11.8 | 193개 실행, 187 통과·6 제외; compileall·pip check·diff check 통과 | 실제 Oracle 1개·ES 3개·POSIX 잠금 2개 제외; 실제 LLM 한국어·긴급도 판단 품질 및 배포 압축파일 재빌드 미검증 |
 | 2026-09-08 오류 진단 추가 / Windows Python 3.11.8 | 169개 실행, 163 통과·6 제외; compileall·pip check·diff check 통과 | 실제 Oracle 1개·ES 3개·POSIX 잠금 2개 제외; 현재 소스의 결과이며 배포 압축파일은 이번 작업에서 재빌드하지 않음 |
 | 2026-09-06 Oracle 추가 / Windows Python 3.11.8 | 139개 실행, 133 통과·6 제외; compileall·pip check·diff check 통과 | Oracle 단위·연결 경로 15개 통과; 실제 Oracle 1개·ES 3개·POSIX 2개 제외 |

@@ -22,11 +22,11 @@ _EXCEPTION_CLASS = (
     r"[A-Za-z_$][A-Za-z0-9_$]*(?:Exception|Error|Throwable|Failure)"
 )
 _ROOT_HEADER_RE = re.compile(
-    rf"(?P<type>{_EXCEPTION_CLASS})(?::\s*(?P<message>.*))?$"
+    rf"(?P<type>{_EXCEPTION_CLASS})(?:(?::\s*|\s+(?=\[))(?P<message>.*))?$"
 )
 _EXPLICIT_HEADER_RE = re.compile(
     r"(?P<type>(?:[A-Za-z_$][A-Za-z0-9_$]*\.)*"
-    r"[A-Za-z_$][A-Za-z0-9_$]*)(?::\s*(?P<message>.*))?$"
+    r"[A-Za-z_$][A-Za-z0-9_$]*)(?:(?::\s*|\s+(?=\[))(?P<message>.*))?$"
 )
 _THREAD_PREFIX_RE = re.compile(r'^Exception in thread\s+"[^"]+"\s+')
 _FRAME_RE = re.compile(r"^at\s+(?P<call>[^\s(]+)\((?P<location>[^)]*)\)$")
@@ -180,6 +180,9 @@ class JavaErrorParser:
 
             frame = self._parse_frame(stripped)
             if frame is None:
+                if (current is not None and not current.frames and current.message.startswith("[")
+                        and not current.message.endswith("]")):
+                    current.message += "\n" + stripped
                 continue
             if current is None:
                 current = _ExceptionSection(
@@ -244,6 +247,7 @@ class JavaErrorParser:
         )
 
     def _parse_frame(self, line: str) -> StackFrame | None:
+        line = re.sub(r"^at\s+\[([\w.$]+)\]\(https?://[^\s)]*\)(\([^)]*\))$", r"at \1\2", line)
         match = _FRAME_RE.match(line)
         if not match:
             return None

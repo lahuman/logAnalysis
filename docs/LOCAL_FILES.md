@@ -33,6 +33,7 @@ cp docs/examples/local-errors.log data/input/application.log
 | 항목 | 설정할 값 |
 |---|---|
 | `error_source.path` | 분석할 텍스트 로그 파일 한 개의 경로 |
+| `error_source.format` | 일반 로그는 `standard`(기본값), `Server Instance`로 시작하는 내부 예외 보고서는 `nexus` |
 | `error_source.service` | `services`에 정의한 서비스 이름. 예제는 `order_api` |
 | `error_source.encoding` | UTF-8은 `utf-8`, Windows 한글 로그는 `cp949` |
 | `error_source.timestamp_timezone` | 시간대 없는 헤더의 기준. 한국 시각은 `+09:00` |
@@ -97,6 +98,48 @@ ERROR뿐 아니라 파일의 **모든 로그 수준 헤더**를 인식하도록 
 이전 기록의 연속 줄로 묶이므로 실제 파일 형식과 맞추는 것이 중요합니다.
 헤더 없이 stack trace만 있는 파일, JSONL, 압축 로그, 여러 서비스가 섞인 파일은 이 입력 방식의 대상이 아닙니다.
 파일 하나는 설정의 서비스 하나에 대응하며 여러 파일은 설정을 나누어 실행합니다.
+
+## 내부 Nexus 예외 보고서 원본 읽기
+
+`Server Instance : ...`, `Exception Time : ...`, `Exception StackTrace : ...` 형태의 로그는
+개선된 소스에서 `format = "nexus"`로 직접 읽습니다. 별도 정규화 파일은 필요하지 않습니다.
+기존 배포본에서는 수정한 소스를 반영해야 하며 기본 `standard` 설정의 동작은 유지됩니다.
+
+```toml
+[error_source]
+type = "file"
+format = "nexus"
+name = "internal-nexus-logs"
+path = "data/input/internal-exceptions.log"
+service = "vhInternet"
+encoding = "utf-8"
+timestamp_timezone = "+09:00"
+filter_time_window = false
+```
+
+`service`는 기존 설정의 `[services.<이름>]`과 맞춰야 합니다. 같은 서비스의 여러 서버 인스턴스를
+한 파일에 넣을 수 있으며, 다음 `Server Instance` 또는 `---` 구분선에서 기록을 나눕니다.
+파일 앞의 빈 줄·`---`·UTF-8 BOM을 허용합니다. CP949 파일은 `encoding`을 바꿉니다.
+
+| 원본 필드 | 파싱 결과 |
+|---|---|
+| `Exception Time` | 발생 시각; 오프셋이 없으면 설정한 시간대를 적용 |
+| `Exception Message` | 다음 필드 전까지 여러 줄 메시지 보존 |
+| `Exception StackTrace` | Java 예외 체인·스택 프레임 파싱 |
+| `Exception UUID` | `trace_id`; 이벤트 ID는 기존처럼 원본 바이트와 위치로 생성 |
+| `Server Instance`, `Exception TxID`, `Exception Code`, `Exception Screen ID` | `attributes`의 서버·거래·오류 코드·화면 정보 |
+| `Exception RootCause`, `Exception ExtraRootCause` | 별도 참고 정보; 실제 주 원인은 StackTrace의 마지막 `Caused by:`로 결정 |
+
+이 형식에는 로그 수준이 없으므로 **예외 보고서 한 건을 ERROR로 처리**합니다.
+`Server Instance`, `Exception Time`, `Exception Message`, `Exception StackTrace`는 필수이며
+누락·중복 필드·잘못된 시각·크기 초과는 원문 값 없이 오류로 표시합니다.
+UserIP·UserID·ClerkNO는 구조화 메타데이터에 추가하지 않지만 원본 로그 자체에는 남아 있습니다.
+
+`NexusException [ ... ]`, `Caused by: B2CServiceException [ ... ]`처럼 콜론 대신 대괄호를 쓰는
+예외와 여러 줄 메시지를 지원합니다. `... N more`는 바로 위 예외의 프레임을 이어받아 복원합니다.
+붙여넣기로 생긴 NBSP 공백과 `[클래스.메소드](URL)(파일.java:줄)` 스택 표현도 처리하며 URL에 접속하지 않습니다.
+마지막 예외가 메시지 없는 `java.lang.Exception`이면 구체적인 실패 사유까지 알 수는 없으므로
+복원된 발생 위치와 상위 예외 정보로 소스를 확인해야 합니다.
 
 ## 과거 로그, 중복 오류와 추가 기록
 
